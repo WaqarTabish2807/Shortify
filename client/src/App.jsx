@@ -5,14 +5,14 @@ import { ThemeProvider } from './context/ThemeContext';
 import Dashboard from './pages/dashboard';
 import Pricing from './pages/pricing';
 import Account from './pages/account';
-
+import Homepage from './pages/homepage';
 const App = () => {
   return (
     <ThemeProvider>
       <VideoProcessingProvider>
         <Router>
           <Routes>
-            <Route path="/" element={<Dashboard />} />
+            <Route path="/" element={<Homepage />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/pricing" element={<Pricing />} />
             <Route path="/account" element={<Account />} />
