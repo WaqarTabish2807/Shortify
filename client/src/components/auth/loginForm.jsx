@@ -1,10 +1,15 @@
 import React, { useState } from "react";
 import FormInput from "./formInput";
+import { supabase } from '../../supabase/client'; // Import supabase client
+import { useNavigate } from 'react-router-dom'; // Import useNavigate for redirection
 
 const LoginForm = ({ onSwitchToRegister }) => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [errors, setErrors] = useState({});
+  const [message, setMessage] = useState(''); // Add state for login messages
+
+  const navigate = useNavigate(); // Initialize useNavigate hook
   
   const validateForm = () => {
     const newErrors = {};
@@ -23,13 +28,30 @@ const LoginForm = ({ onSwitchToRegister }) => {
     return Object.keys(newErrors).length === 0;
   };
   
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => { // Make handleSubmit async
     e.preventDefault();
+    setMessage(''); // Clear previous messages
     if (validateForm()) {
-      // In a real app, this would be an API call to authenticate the user
       console.log("Login submitted:", { email, password });
-      // For now just show an alert
-      alert(`Login attempted with email: ${email}`);
+      // In a real app, this would be an API call to authenticate the user
+      // alert(`Login attempted with email: ${email}`);
+
+      // Supabase login call
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+
+      if (error) {
+        setMessage("Login failed: " + error.message); // Display Supabase error message
+        console.error('Supabase login error:', error);
+      } else if (data.user) {
+        setMessage("Login successful!"); // Success message
+        console.log('Supabase login successful:', data);
+        // Redirect to dashboard on successful login
+        navigate('/dashboard');
+      } else {
+          // This case might occur if login is successful but no user data is returned
+          setMessage("Login successful, but user data not received.");
+          console.log('Supabase login successful, no user data.', data);
+      }
     }
   };
   
@@ -122,7 +144,6 @@ const LoginForm = ({ onSwitchToRegister }) => {
     fontSize: '1.125rem', // Equivalent to text-lg
     transition: 'background-color 0.15s ease-in-out', // Equivalent to transition-colors
     cursor: 'pointer',
-    // marginTop: '1rem', // Added margin top to separate from the 'or' divider
   };
   
   const signupPromptStyle = {
@@ -140,6 +161,13 @@ const LoginForm = ({ onSwitchToRegister }) => {
     border: 'none',
     padding: 0,
     marginLeft: '0.25rem', // ml-1
+  };
+  
+   const messageStyle = {
+    textAlign: 'center',
+    marginTop: '1rem',
+    fontSize: '0.875rem',
+    color: message.startsWith('Login failed') ? '#ef4444' : '#10b981', // Red for errors, green for success
   };
 
   return (
@@ -195,6 +223,9 @@ const LoginForm = ({ onSwitchToRegister }) => {
             Continue with Google
           </button>
         </form>
+        
+        {message && <p style={messageStyle}>{message}</p>}
+
         <div style={signupPromptStyle}>
           Don't have an account?{" "}
           <button type="button" onClick={onSwitchToRegister} style={signupButtonStyle}>

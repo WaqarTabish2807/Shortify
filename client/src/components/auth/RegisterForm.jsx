@@ -258,10 +258,10 @@ const RegisterForm = ({ onSwitchToLogin }) => {
       {message && <p style={messageStyle}>{message}</p>}
       
       <div style={signinPromptStyle}>
-        Already have an account?{" "}
+          Already have an account?{" "}
         <button type="button" onClick={onSwitchToLogin} style={signinButtonStyle}>
-          Sign in
-        </button>
+            Sign in
+          </button>
       </div>
     </div>
   );
