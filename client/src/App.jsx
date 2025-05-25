@@ -6,6 +6,8 @@ import Dashboard from './pages/dashboard';
 import Pricing from './pages/pricing';
 import Account from './pages/account';
 import Homepage from './pages/homepage';
+import AuthForm from './components/auth/authForm';
+
 const App = () => {
   return (
     <ThemeProvider>
@@ -16,6 +18,7 @@ const App = () => {
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/pricing" element={<Pricing />} />
             <Route path="/account" element={<Account />} />
+            <Route path="/auth" element={<AuthForm />} />
           </Routes>
         </Router>
       </VideoProcessingProvider>
