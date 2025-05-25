@@ -15,10 +15,10 @@ const App = () => {
         <Router>
           <Routes>
             <Route path="/" element={<Homepage />} />
+            <Route path='/auth' element={<AuthForm />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/pricing" element={<Pricing />} />
             <Route path="/account" element={<Account />} />
-            <Route path="/auth" element={<AuthForm />} />
           </Routes>
         </Router>
       </VideoProcessingProvider>

@@ -1,140 +1,69 @@
-// import React, { useState } from "react";
-// import { motion, AnimatePresence } from "framer-motion";
-// import LoginForm from "./loginForm";
-// import RegisterForm from "./RegisterForm";
-
-
-// const AuthForm = () => {
-//   const [isLogin, setIsLogin] = useState(true);
-  
-//   return (
-//     <div className="w-full max-w-md">
-//       <div className="mb-6 flex rounded-md bg-gray-100 p-1">
-//         <button
-//           type="button"
-//           onClick={() => setIsLogin(true)}
-//         >
-//           Sign in
-//         </button>
-//         <button
-//           type="button"
-//           onClick={() => setIsLogin(false)}
-//         >
-//           Sign up
-//         </button>
-//       </div>
-      
-//       <div className="bg-white p-8 rounded-lg shadow-sm border border-gray-200">
-//         <AnimatePresence mode="wait">
-//           {isLogin ? (
-//             <motion.div
-//               key="login"
-//               initial={{ opacity: 0, x: -20 }}
-//               animate={{ opacity: 1, x: 0 }}
-//               exit={{ opacity: 0, x: 20 }}
-//               transition={{ duration: 0.2 }}
-//             >
-//               <LoginForm onSwitchToRegister={() => setIsLogin(false)} />
-//             </motion.div>
-//           ) : (
-//             <motion.div
-//               key="register"
-//               initial={{ opacity: 0, x: 20 }}
-//               animate={{ opacity: 1, x: 0 }}
-//               exit={{ opacity: 0, x: -20 }}
-//               transition={{ duration: 0.2 }}
-//             >
-//               <RegisterForm onSwitchToLogin={() => setIsLogin(true)} />
-//             </motion.div>
-//           )}
-//         </AnimatePresence>
-//       </div>
-//     </div>
-//   );
-// };
-
-// export default AuthForm;
-
-
-// LoginSignup.js
-// src/pages/LoginSignup.js
-import { useState } from 'react';
-import { supabase } from '../../supabase/client';
-import { useNavigate } from 'react-router-dom';
+import React, { useState } from 'react';
+import LoginForm from './loginForm';
+import RegisterForm from './RegisterForm';
 
 const AuthForm = () => {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [isSignup, setIsSignup] = useState(false);
-  const [message, setMessage] = useState('');
-  const navigate = useNavigate();
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const containerStyle = {
+    display: 'flex',
+    minHeight: '100vh',
+    alignItems: 'center',
+    justifyContent: 'center',
+    background: 'linear-gradient(to bottom right, #fbcfe8, #e9d5ff)', // Equivalent to from-pink-100 to-purple-100
+  };
 
-    if (isSignup) {
-      const { data, error } = await supabase.auth.signUp({ email, password });
-      if (error) {
-        setMessage(error.message);
-      } else {
-        // After successful signup
-        const user = data.user;
-        console.log(user);
-        const { error: insertError } = await supabase
-      .from('user_credits')
-      .insert([
-        {
-          user_id: user.id,
-          credits: 2,
-        },
-      ]);
+  const cardStyle = {
+    width: '100%',
+    maxWidth: '28rem', // Equivalent to max-w-md
+    padding: '2rem', // Equivalent to p-8
+    borderRadius: '1rem', // Equivalent to rounded-xl
+    boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)', // Equivalent to shadow-lg
+    backgroundColor: 'rgba(255, 255, 255, 0.6)', // Equivalent to bg-white/60
+    border: '1px solid #e5e7eb', // Equivalent to border border-gray-200
+    backdropFilter: 'blur(12px)', // Equivalent to backdrop-blur-md
+  };
 
-    if (insertError) {
-      console.error('Insert Error:', insertError.message);
-    } else {
-      console.log('Credits inserted for user!');
-    }
-        setMessage("Signup successful! Check your email for confirmation.");
-      }
-    } else {
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  const headerContainerStyle = {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    marginBottom: '1.5rem', // Equivalent to mb-6
+  };
 
-      if (error) {
-        setMessage("Invalid credentials. Please try again.");
-      } else {
-        setMessage("Login successful!");
-        navigate('/dashboard');  // Redirect to Dashboard
-      }
-    }
+  const badgeStyle = {
+    padding: '0.25rem 0.75rem', // Equivalent to px-3 py-1
+    backgroundColor: '#fde68a', // Equivalent to bg-yellow-200
+    color: '#b45309', // Equivalent to text-yellow-800
+    borderRadius: '9999px', // Equivalent to rounded-full
+    fontSize: '0.75rem', // Equivalent to text-xs
+    fontWeight: '600', // Equivalent to font-semibold
+    marginBottom: '0.75rem', // Equivalent to mb-3
+  };
+
+  const headingStyle = {
+    fontSize: '1.875rem', // Equivalent to text-3xl
+    fontWeight: 'bold', // Equivalent to font-bold
+    color: '#111827', // Equivalent to text-gray-900
+    marginBottom: '0.5rem', // Equivalent to mb-2
   };
 
   return (
-    <div style={{ maxWidth: '400px', margin: 'auto' }}>
-      <h2>{isSignup ? 'Sign Up' : 'Login'}</h2>
-      <form onSubmit={handleSubmit}>
-        <input
-          type="email"
-          placeholder="Email"
-          value={email}
-          onChange={e => setEmail(e.target.value)}
-          required
-        /><br />
-        <input
-          type="password"
-          placeholder="Password"
-          value={password}
-          onChange={e => setPassword(e.target.value)}
-          required
-        /><br />
-        <button type="submit">{isSignup ? 'Sign Up' : 'Login'}</button>
-      </form>
-      <p style={{ color: 'red' }}>{message}</p>
-      <button onClick={() => setIsSignup(!isSignup)}>
-        {isSignup ? 'Already have an account? Login' : 'New user? Sign Up'}
-      </button>
+    <div style={containerStyle}>
+      <div style={cardStyle}>
+        <div style={headerContainerStyle}>
+          <span style={badgeStyle}> Shortify Login</span>
+          <h2 style={headingStyle}>Welcome!</h2>
+        </div>
+        {isSignup ? (
+          <RegisterForm onSwitchToLogin={() => setIsSignup(false)} />
+        ) : (
+          <LoginForm onSwitchToRegister={() => setIsSignup(true)} />
+        )}
+      </div>
     </div>
   );
-}
+};
 
 export default AuthForm;
 
