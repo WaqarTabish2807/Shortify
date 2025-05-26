@@ -1,6 +1,7 @@
 import React from "react";
 import { MdDashboard, MdSettings } from "react-icons/md";
 import { CiWallet } from "react-icons/ci";
+import { FaPagelines } from "react-icons/fa";
 import { FiMessageCircle } from "react-icons/fi";
 import { useAuth } from "../context/AuthContext";
 
@@ -97,7 +98,7 @@ const Sidebar = ({ isMobile, isDarkMode, activePage }) => {
               alignItems: 'center',
               gap: 8
             }}>
-              <CiWallet size={22} style={{ color: isDarkMode ? '#fff' : '#222' }} />
+              <FaPagelines size={22} style={{ color: isDarkMode ? '#fff' : '#222' }} />
               <span style={{ 
                 color: isDarkMode ? '#fff' : '#222',
                 fontWeight: 700,

@@ -9,23 +9,22 @@ import Pricing from './pages/pricing';
 import Account from './pages/account';
 import Homepage from './pages/homepage';
 import Auth from './components/auth/authForm';
-// import NotFound from './pages/NotFound';
 
 const App = () => {
   return (
     <ThemeProvider>
       <Router>
         <AuthProvider>
-          <VideoProcessingProvider>
-            <Routes>
-              <Route path="/" element={<Homepage />} />
+      <VideoProcessingProvider>
+          <Routes>
+            <Route path="/" element={<Homepage />} />
               <Route path="/auth" element={<Auth />} />
               <Route path="/dashboard" element={
                 <ProtectedRoute>
                   <Dashboard />
                 </ProtectedRoute>
               } />
-              <Route path="/pricing" element={<Pricing />} />
+            <Route path="/pricing" element={<Pricing />} />
               <Route path="/account" element={
                 <ProtectedRoute>
                   <Account />
@@ -33,10 +32,10 @@ const App = () => {
               } />
               <Route path="/" element={<Navigate to="/dashboard" replace />} />
               {/* <Route path="*" element={<NotFound />} /> */}
-            </Routes>
+          </Routes>
           </VideoProcessingProvider>
         </AuthProvider>
-      </Router>
+        </Router>
     </ThemeProvider>
   );
 };
