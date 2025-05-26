@@ -15,7 +15,7 @@ const Sidebar = ({ isMobile, isDarkMode, activePage }) => (
     alignItems: isMobile ? 'center' : 'flex-start',
     justifyContent: isMobile ? 'space-around' : 'flex-start',
   }}>
-    <div style={{ fontWeight: 700, fontSize: isMobile ? 18 : 22, marginBottom: isMobile ? 0 : 40, letterSpacing: 0.5, color: isDarkMode ? '#fff' : '#000', marginRight: isMobile ? 20 : 0 }}>
+    <div style={{ fontWeight: 700, fontSize: isMobile ? 18 : 22, marginBottom: isMobile ? 0 : 40, letterSpacing: 0.5, color: isDarkMode ? '#fff' : '#000', marginRight: isMobile ? 20 : 0, marginLeft: isMobile ? 20 : 55 }}>
       Shortify
     </div>
     <nav style={{ width: isMobile ? 'auto' : '100%', display: 'flex', flexDirection: isMobile ? 'row' : 'column', gap: isMobile ? 20 : 8 }}>

@@ -16,7 +16,7 @@ const AuthForm = () => {
   const cardStyle = {
     width: '100%',
     maxWidth: '28rem', // Equivalent to max-w-md
-    padding: '2rem', // Equivalent to p-8
+    padding: '1.5rem', // Equivalent to p-8
     borderRadius: '1rem', // Equivalent to rounded-xl
     boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)', // Equivalent to shadow-lg
     backgroundColor: 'rgba(255, 255, 255, 0.6)', // Equivalent to bg-white/60
@@ -28,17 +28,15 @@ const AuthForm = () => {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    marginBottom: '1.5rem', // Equivalent to mb-6
   };
 
   const badgeStyle = {
-    padding: '0.25rem 0.75rem', // Equivalent to px-3 py-1
+    padding: '0.25rem 0.25rem', // Equivalent to px-3 py-1
     backgroundColor: '#fde68a', // Equivalent to bg-yellow-200
     color: '#b45309', // Equivalent to text-yellow-800
     borderRadius: '9999px', // Equivalent to rounded-full
     fontSize: '0.75rem', // Equivalent to text-xs
     fontWeight: '600', // Equivalent to font-semibold
-    marginBottom: '0.75rem', // Equivalent to mb-3
   };
 
   const headingStyle = {

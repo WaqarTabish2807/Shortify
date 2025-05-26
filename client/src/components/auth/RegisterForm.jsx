@@ -72,13 +72,21 @@ const RegisterForm = ({ onSwitchToLogin }) => {
         } else {
           setMessage("Signup successful! Check your email for confirmation."); // Full success
           console.log('User credits and full name inserted!');
-          // Optionally switch to login form after successful signup and data insert
-          // onSwitchToLogin();
+          
+          // Add a 2-second delay before redirecting to login
+          setTimeout(() => {
+            onSwitchToLogin();
+          }, 2000);
         }
       } else {
           // This case might occur if signup is successful but no user data is returned (e.g., email confirmation required)
           setMessage("Signup initiated. Check your email for confirmation.");
           console.log('Supabase signup successful, awaiting email confirmation.', data);
+          
+          // Add a 2-second delay before redirecting to login
+          setTimeout(() => {
+            onSwitchToLogin();
+          }, 2000);
       }
     }
   };

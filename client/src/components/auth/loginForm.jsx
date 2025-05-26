@@ -8,6 +8,7 @@ const LoginForm = ({ onSwitchToRegister }) => {
   const [password, setPassword] = useState("");
   const [errors, setErrors] = useState({});
   const [message, setMessage] = useState(''); // Add state for login messages
+  const [isResettingPassword, setIsResettingPassword] = useState(false);
 
   const navigate = useNavigate(); // Initialize useNavigate hook
   
@@ -20,7 +21,7 @@ const LoginForm = ({ onSwitchToRegister }) => {
       newErrors.email = "Email is invalid";
     }
     
-    if (!password) {
+    if (!isResettingPassword && !password) {
       newErrors.password = "Password is required";
     }
     
@@ -28,30 +29,88 @@ const LoginForm = ({ onSwitchToRegister }) => {
     return Object.keys(newErrors).length === 0;
   };
   
-  const handleSubmit = async (e) => { // Make handleSubmit async
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    setMessage(''); // Clear previous messages
+    setMessage('');
     if (validateForm()) {
-      console.log("Login submitted:", { email, password });
-      // In a real app, this would be an API call to authenticate the user
-      // alert(`Login attempted with email: ${email}`);
+      if (isResettingPassword) {
+        await handleResetPassword();
+      } else {
+        await handleLogin();
+      }
+    }
+  };
 
-      // Supabase login call
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  const handleLogin = async () => {
+    console.log("Login submitted:", { email, password });
+
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+
+    if (error) {
+      setMessage("Login failed: " + error.message);
+      console.error('Supabase login error:', error);
+    } else if (data.user) {
+      setMessage("Login successful!");
+      console.log('Supabase login successful:', data);
+      navigate('/dashboard');
+    } else {
+      setMessage("Login successful, but user data not received.");
+      console.log('Supabase login successful, no user data.', data);
+    }
+  };
+
+  const handleResetPassword = async () => {
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      });
 
       if (error) {
-        setMessage("Login failed: " + error.message); // Display Supabase error message
-        console.error('Supabase login error:', error);
-      } else if (data.user) {
-        setMessage("Login successful!"); // Success message
-        console.log('Supabase login successful:', data);
-        // Redirect to dashboard on successful login
-        navigate('/dashboard');
+        setMessage("Password reset failed: " + error.message);
+        console.error('Password reset error:', error);
       } else {
-          // This case might occur if login is successful but no user data is returned
-          setMessage("Login successful, but user data not received.");
-          console.log('Supabase login successful, no user data.', data);
+        setMessage("Password reset instructions have been sent to your email.");
+        // Reset the form state after 2 seconds
+        setTimeout(() => {
+          setIsResettingPassword(false);
+          setMessage('');
+        }, 2000);
       }
+    } catch (error) {
+      setMessage("Error during password reset: " + error.message);
+      console.error('Error during password reset:', error);
+    }
+  };
+
+  const handleForgotPassword = () => {
+    setIsResettingPassword(true);
+    setMessage('');
+    setPassword(''); // Clear password field when switching to reset mode
+  };
+
+  const handleBackToLogin = () => {
+    setIsResettingPassword(false);
+    setMessage('');
+  };
+
+  const handleGoogleSignIn = async () => {
+    try {
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/dashboard`
+        }
+      });
+
+      if (error) {
+        setMessage("Google sign-in failed: " + error.message);
+        console.error('Google sign-in error:', error);
+      } else {
+        console.log('Google sign-in initiated:', data);
+      }
+    } catch (error) {
+      setMessage("Error during Google sign-in: " + error.message);
+      console.error('Error during Google sign-in:', error);
     }
   };
   
@@ -170,10 +229,43 @@ const LoginForm = ({ onSwitchToRegister }) => {
     color: message.startsWith('Login failed') ? '#ef4444' : '#10b981', // Red for errors, green for success
   };
 
+  const headingStyle = {
+    fontSize: '1.5rem',
+    fontWeight: '600',
+    marginBottom: '0.5rem',
+  };
+
+  const subheadingStyle = {
+    fontSize: '1rem',
+    color: '#6b7280',
+  };
+
+  const backButtonStyle = {
+    width: '100%',
+    backgroundColor: '#7c3aed',
+    color: '#fff',
+    padding: '0.75rem',
+    borderRadius: '0.375rem',
+    fontWeight: '600',
+    fontSize: '1rem',
+    transition: 'background-color 0.15s ease-in-out',
+    cursor: 'pointer',
+    border: 'none',
+    marginTop: '1rem',
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-pink-100 to-purple-100">
       <div className="w-full max-w-md p-8 rounded-xl shadow-lg bg-white/60 border border-gray-200 backdrop-blur-md">
         <div className="flex flex-col items-center mb-6">
+          <h2 style={headingStyle}>
+            {isResettingPassword ? 'Reset Password' : 'Welcome back!'}
+          </h2>
+          {isResettingPassword && (
+            <p style={subheadingStyle}>
+              Enter your email address and we'll send you instructions to reset your password.
+            </p>
+          )}
         </div>
         <form onSubmit={handleSubmit} style={formStyle}>
           <FormInput
@@ -185,53 +277,68 @@ const LoginForm = ({ onSwitchToRegister }) => {
             error={errors.email}
             required
           />
-          <FormInput
-            label="Password"
-            type="password"
-            id="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            error={errors.password}
-            required
-          />
-          <div style={rememberForgotStyle}>
-            <div style={rememberMeStyle}>
-              <input
-                id="remember-me"
-                name="remember-me"
-                type="checkbox"
-                style={rememberMeInputStyle}
-              />
-              <label htmlFor="remember-me" style={rememberMeLabelStyle}>
-                Remember me
-              </label>
+          {!isResettingPassword && (
+            <FormInput
+              label="Password"
+              type="password"
+              id="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              error={errors.password}
+              required
+            />
+          )}
+          {!isResettingPassword && (
+            <div style={rememberForgotStyle}>
+              <div style={rememberMeStyle}>
+                <input
+                  id="remember-me"
+                  name="remember-me"
+                  type="checkbox"
+                  style={rememberMeInputStyle}
+                />
+                <label htmlFor="remember-me" style={rememberMeLabelStyle}>
+                  Remember me
+                </label>
+              </div>
+              <button type="button" onClick={handleForgotPassword} style={forgotPasswordButtonStyle}>
+                Forgot password?
+              </button>
             </div>
-            <button type="button" style={forgotPasswordButtonStyle}>
-              Forgot password?
-            </button>
-          </div>
+          )}
           <button type="submit" style={loginButtonStyle}>
-            Login
+            {isResettingPassword ? 'Send Reset Instructions' : 'Login'}
           </button>
-          <div style={orDividerStyle}>
-            <div style={dividerLineStyle} />
-            <span style={orTextStyle}>or</span>
-            <div style={dividerLineStyle} />
-          </div>
-          <button type="button" style={googleButtonStyle}>
-            <img src="https://www.svgrepo.com/show/475656/google-color.svg" alt="Google" style={{ width: '1.25rem', height: '1.25rem' }} /> {/* Equivalent to w-5 h-5 */}
-            Continue with Google
-          </button>
+          {isResettingPassword && (
+            <button type="button" onClick={handleBackToLogin} style={backButtonStyle}>
+              Back to Login
+            </button>
+          )}
+          {!isResettingPassword && (
+            <>
+              <div style={orDividerStyle}>
+                <div style={dividerLineStyle} />
+                <span style={orTextStyle}>or</span>
+                <div style={dividerLineStyle} />
+              </div>
+              <button type="button" onClick={handleGoogleSignIn} style={googleButtonStyle}>
+                <img src="https://www.svgrepo.com/show/475656/google-color.svg" alt="Google" style={{ width: '1.25rem', height: '1.25rem' }} />
+                Continue with Google
+              </button>
+            </>
+          )}
         </form>
         
         {message && <p style={messageStyle}>{message}</p>}
 
-        <div style={signupPromptStyle}>
-          Don't have an account?{" "}
-          <button type="button" onClick={onSwitchToRegister} style={signupButtonStyle}>
-            Sign up
-          </button>
-        </div>
+        {!isResettingPassword && (
+          <div style={signupPromptStyle}>
+            Don't have an account?{" "}
+            <button type="button" onClick={onSwitchToRegister} style={signupButtonStyle}>
+              Sign up
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
