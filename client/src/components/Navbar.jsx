@@ -45,7 +45,9 @@ const Navbar = ({ userEmail }) => {
           <div style={{ padding: '6px 14px', color: isDarkMode ? '#888' : '#888' }}>Limited</div>
           <div style={{ padding: '6px 14px', background: isDarkMode ? '#333' : '#fff', color: isDarkMode ? '#fff' : '#222', fontWeight: 700 }}>Free Plan</div>
         </div>
-        <button style={{ display: 'flex', alignItems: 'center', gap: 6, background: isDarkMode ? '#2a2a2a' : '#fff', border: `1px solid ${isDarkMode ? '#333' : '#eee'}`, borderRadius: 8, padding: '6px 14px', fontWeight: 500, cursor: 'pointer', color: isDarkMode ? '#fff' : '#000', transition: 'all 0.3s ease' }}>
+        <button 
+          onClick={() => navigate('/pricing')}
+          style={{ display: 'flex', alignItems: 'center', gap: 6, background: isDarkMode ? '#2a2a2a' : '#fff', border: `1px solid ${isDarkMode ? '#333' : '#eee'}`, borderRadius: 8, padding: '6px 14px', fontWeight: 500, cursor: 'pointer', color: isDarkMode ? '#fff' : '#000', transition: 'all 0.3s ease' }}>
           Upgrade <WiStars size={18} />
         </button>
         <div style={{ position: 'relative', display: 'inline-block' }}>
