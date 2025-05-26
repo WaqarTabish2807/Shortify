@@ -2,18 +2,18 @@ import React, { useState, useEffect } from 'react';
 import { MdPerson, MdSettings, MdErrorOutline, MdCreditCard } from 'react-icons/md';
 import { CiWallet } from 'react-icons/ci';
 import { useTheme } from '../context/ThemeContext';
+import { useAuth } from '../context/AuthContext';
 import Navbar from '../components/Navbar';
 import Sidebar from "../components/Sidebar";
+import { supabase } from '../supabase/client';
 
 const Account = () => {
   const [accountSubMenu, setAccountSubMenu] = useState('Profile');
   const { isDarkMode } = useTheme();
+  const { user } = useAuth();
   const [screenWidth, setScreenWidth] = useState(window.innerWidth);
   const [manageHover, setManageHover] = useState(false);
-
-  // Hardcoded user info for demo
-  const userEmail = "waqs2807@gmail.com";
-  const userName = "Md Waqar Tabish";
+  const [userDetails, setUserDetails] = useState(null);
 
   useEffect(() => {
     const handleResize = () => setScreenWidth(window.innerWidth);
@@ -21,13 +21,33 @@ const Account = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  useEffect(() => {
+    const fetchUserDetails = async () => {
+      if (user) {
+        const { data, error } = await supabase
+          .from('user_credits')
+          .select('name')
+          .eq('user_id', user.id)
+          .single();
+
+        if (error) {
+          console.error('Error fetching user details:', error);
+        } else {
+          setUserDetails(data);
+        }
+      }
+    };
+
+    fetchUserDetails();
+  }, [user]);
+
   const isMobile = screenWidth < 768;
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', fontFamily: 'Inter, sans-serif', background: isDarkMode ? '#121212' : '#fafbfc', flexDirection: isMobile ? 'column' : 'row' }}>
       <Sidebar isMobile={isMobile} isDarkMode={isDarkMode} activePage="account" />
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
-        <Navbar userEmail={userEmail} />
+        <Navbar userEmail={user?.email} />
         <div style={{ flex: 1, padding: isMobile ? '16px' : '32px' }}>
           {/* Sub-navigation bar (floating, outside card) */}
           <div style={{
@@ -122,11 +142,11 @@ const Account = () => {
                 </div>
                 <div style={{ marginBottom: isMobile ? '16px' : '20px' }}>
                   <div style={{ fontSize: isMobile ? 12 : 13, color: isDarkMode ? '#aaa' : '#555', marginBottom: 4 }}>Name</div>
-                  <div style={{ fontSize: isMobile ? 16 : 18, fontWeight: 700 }}>{userName}</div>
+                  <div style={{ fontSize: isMobile ? 16 : 18, fontWeight: 700 }}>{userDetails?.name || 'Loading...'}</div>
                 </div>
                 <div>
                   <div style={{ fontSize: isMobile ? 12 : 13, color: isDarkMode ? '#aaa' : '#555', marginBottom: 4 }}>Email</div>
-                  <div style={{ fontSize: isMobile ? 16 : 18, fontWeight: 700 }}>{userEmail}</div>
+                  <div style={{ fontSize: isMobile ? 16 : 18, fontWeight: 700 }}>{user?.email || 'Loading...'}</div>
                 </div>
               </div>
             )}

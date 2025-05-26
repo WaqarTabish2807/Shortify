@@ -2,13 +2,17 @@ import React, { useState, useRef, useEffect } from "react";
 import { WiStars } from "react-icons/wi";
 import { MdOutlineNightlightRound, MdOutlineLightMode, MdPerson, MdLogout } from "react-icons/md";
 import { useTheme } from "../context/ThemeContext";
+import { useAuth } from "../context/AuthContext";
+import { useNavigate } from "react-router-dom";
 
 const Navbar = ({ userEmail }) => {
   const { isDarkMode, toggleTheme } = useTheme();
+  const { signOut } = useAuth();
+  const navigate = useNavigate();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
   const profileTooltipRef = useRef(null);
-  const firstLetterOfEmail = userEmail.charAt(0).toUpperCase();
+  const firstLetterOfEmail = userEmail?.charAt(0).toUpperCase() || '';
 
   const handleToggleDropdown = () => setIsDropdownOpen(prev => !prev);
   const handleClickOutside = (event) => {
@@ -18,11 +22,16 @@ const Navbar = ({ userEmail }) => {
   };
   const showProfileTooltip = () => { if (profileTooltipRef.current) profileTooltipRef.current.style.opacity = 1; };
   const hideProfileTooltip = () => { if (profileTooltipRef.current) profileTooltipRef.current.style.opacity = 0; };
+  
   useEffect(() => {
     document.addEventListener('mousedown', handleClickOutside);
     return () => { document.removeEventListener('mousedown', handleClickOutside); };
   }, []);
-  const handleSignOut = () => { console.log('Signing out...'); };
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate('/auth');
+  };
 
   return (
     <div style={{ 

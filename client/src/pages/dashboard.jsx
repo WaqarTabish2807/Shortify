@@ -2,13 +2,14 @@ import React, { useState, useEffect } from "react";
 import Navbar from "../components/Navbar";
 import Sidebar from "../components/Sidebar";
 import { useTheme } from "../context/ThemeContext";
+import { useAuth } from "../context/AuthContext";
 
 const Dashboard = () => {
   const { isDarkMode } = useTheme();
+  const { user } = useAuth();
   const [screenWidth, setScreenWidth] = useState(window.innerWidth);
   const [youtubeUrl, setYoutubeUrl] = useState("");
   const [error, setError] = useState("");
-  const userEmail = "waqs2807@gmail.com";
 
   useEffect(() => {
     const handleResize = () => setScreenWidth(window.innerWidth);
@@ -41,7 +42,7 @@ const Dashboard = () => {
       <Sidebar isMobile={isMobile} isDarkMode={isDarkMode} activePage="dashboard" />
       {/* Main Content */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
-        <Navbar userEmail={userEmail} />
+        <Navbar userEmail={user?.email} />
         {/* Dashboard Card */}
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: isMobile ? '16px' : '0' }}>
           <div style={{ background: isDarkMode ? '#1a1a1a' : '#fff', borderRadius: 14, boxShadow: '0 2px 12px rgba(0,0,0,0.04)', padding: isMobile ? '20px' : '36px 40px', minWidth: isMobile ? 'auto' : 350, maxWidth: isMobile ? '100%' : 400, textAlign: 'center', color: isDarkMode ? '#fff' : '#000' }}>
