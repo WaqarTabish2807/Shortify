@@ -23,7 +23,7 @@ const Dashboard = () => {
     return /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/.+/.test(url);
   };
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     if (!youtubeUrl.trim()) {
       setError("Please enter a YouTube video URL.");
       return;
@@ -33,8 +33,31 @@ const Dashboard = () => {
       return;
     }
     setError("");
-    // TODO: Replace with actual processing logic
-    alert(`Processing: ${youtubeUrl}`);
+
+    // Call backend to start processing
+    try {
+      const response = await fetch('http://localhost:5000/api/process-video', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ videoId: youtubeUrl }), // Use videoId as expected by backend
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        console.log('Processing started:', data);
+        alert(`Processing started with Job ID: ${data.jobId}`);
+        // TODO: Implement polling for job status using data.jobId
+      } else {
+        setError(`Error starting processing: ${data.error || response.statusText}`);
+        console.error('Error starting processing:', data);
+      }
+    } catch (err) {
+      setError(`Network error: ${err.message}`);
+      console.error('Network error:', err);
+    }
   };
 
   return (

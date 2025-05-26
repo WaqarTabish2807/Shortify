@@ -4,7 +4,7 @@ const cors = require('cors');
 
 // Import routes
 const healthRoutes = require('./routes/health');
-const audioRoutes = require('./routes/video');
+const audioRoutes = require('./routes/audio');
 const transcribeRoutes = require('./routes/transcribe');
 const analyzeRoutes = require('./routes/analyze');
 
