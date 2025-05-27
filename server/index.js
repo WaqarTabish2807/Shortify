@@ -1,6 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const path = require('path');
 
 // Import routes
 const healthRoutes = require('./routes/health');
@@ -19,6 +20,9 @@ app.use('/api', healthRoutes);
 app.use('/api', audioRoutes);
 app.use('/api', transcribeRoutes);
 app.use('/api', analyzeRoutes);
+
+// Serve the temp directory statically at /shorts
+app.use('/shorts', express.static(path.join(__dirname, 'temp')));
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);

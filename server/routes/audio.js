@@ -9,6 +9,11 @@ const TranscriptAPI = require('youtube-transcript-api');
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const ffmpegPath = require('ffmpeg-static');
 const ffmpeg = require('fluent-ffmpeg');
+const fs = require('fs');
+const { createClient } = require('@supabase/supabase-js');
+
+// Initialize Supabase client
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
 // Tell fluent-ffmpeg where it can find FFmpeg
 ffmpeg.setFfmpegPath(ffmpegPath);
@@ -47,9 +52,53 @@ const activeJobs = new Map();
 
 // New endpoint to start parallel processing
 router.post('/process-video', async (req, res) => {
-  const { videoId } = req.body;
+  const { videoId, languageCode: userProvidedLanguageCode } = req.body;
   if (!videoId) {
     return res.status(400).json({ error: 'Missing YouTube video ID.' });
+  }
+
+  // Verify JWT and extract user ID
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Unauthorized: Missing or invalid token.' });
+  }
+  const token = authHeader.split(' ')[1];
+  let userId;
+  try {
+    const { data: { user }, error } = await supabase.auth.getUser(token);
+    if (error || !user) {
+      return res.status(401).json({ error: 'Unauthorized: Invalid token.' });
+    }
+    userId = user.id;
+  } catch (err) {
+    return res.status(401).json({ error: 'Unauthorized: Token verification failed.' });
+  }
+
+  // Fetch user credits and tier
+  let userCredits, userTier;
+  try {
+    const { data, error } = await supabase
+      .from('user_credits')
+      .select('credits, tier, user_id')
+      .eq('user_id', userId)
+      .maybeSingle(); // Use maybeSingle to avoid throwing if no row
+    if (error) {
+      return res.status(500).json({ error: 'Failed to fetch user credits.' });
+    }
+    if (!data) {
+      // No row found for this user
+      return res.status(403).json({ error: 'No credits record found for this user. Please contact support.' });
+    }
+    userCredits = data.credits;
+    userTier = data.tier === 'paid' ? 'paid' : 'free'; // Default to free if not set or invalid
+  } catch (err) {
+    return res.status(500).json({ error: 'Error fetching user data.' });
+  }
+
+  // Enforce credit limits
+  const maxShorts = userTier === 'paid' ? 4 : 2;
+  if (userCredits < 1) {
+    return res.status(403).json({ error: 'Insufficient credits.' });
   }
 
   try {
@@ -69,7 +118,10 @@ router.post('/process-video', async (req, res) => {
       transcript: null,
       segments: null,
       shorts: null,
-      error: null
+      error: null,
+      userId,
+      userTier,
+      maxShorts
     });
 
     // Start video download in background
@@ -116,31 +168,88 @@ router.post('/process-video', async (req, res) => {
              throw new Error('Invalid YouTube video ID or URL. Please provide a valid YouTube video ID or URL.');
         }
         try {
+            // Try YouTube transcript first
             const transcript = await TranscriptAPI.getTranscript(extractedId);
 
-            if (!transcript || transcript.length === 0) {
+            if (transcript && transcript.length > 0) {
+                const formattedTranscript = transcript.map(item => ({
+                    text: item.text,
+                    start: parseFloat(item.start),
+                    duration: parseFloat(item.duration)
+                }));
+                const job = activeJobs.get(jobId);
+                if (job) {
+                  job.transcript = formattedTranscript;
+                }
+                return { transcript: formattedTranscript };
+            } else {
                 throw new Error('No transcript found for this video.');
             }
-
-            const formattedTranscript = transcript.map(item => ({
-                text: item.text,
-                start: parseFloat(item.start),
-                duration: parseFloat(item.duration)
-            }));
-
-            const job = activeJobs.get(jobId);
-            if (job) {
-              job.transcript = formattedTranscript;
-            }
-            return { transcript: formattedTranscript };
-
         } catch (err) {
-            console.error('YouTube transcript error during processing:', err);
-            const job = activeJobs.get(jobId);
-            if (job) {
-              job.error = job.error ? `${job.error}, Transcript Error: ${err.message}` : `Transcript Error: ${err.message}`;;
+            console.warn('YouTube transcript not found, falling back to Google Speech-to-Text:', err.message);
+            // Fallback: Use Google Speech-to-Text with chunking
+            try {
+                // Download audio only
+                const audioPath = path.join(__dirname, '..', 'temp', `audio-${Date.now()}.mp3`);
+                await new Promise((resolve, reject) => {
+                    ytdl(videoId, { filter: 'audioonly', quality: 'highestaudio' })
+                        .pipe(fs.createWriteStream(audioPath))
+                        .on('finish', resolve)
+                        .on('error', reject);
+                });
+                // Split audio into 1-minute chunks using ffmpeg
+                const ffmpeg = require('fluent-ffmpeg');
+                const audioChunksDir = path.join(__dirname, '..', 'temp', `audio-chunks-${Date.now()}`);
+                await fsPromises.mkdir(audioChunksDir, { recursive: true });
+                await new Promise((resolve, reject) => {
+                    ffmpeg(audioPath)
+                        .outputOptions('-f segment', '-segment_time 60', '-c copy')
+                        .output(path.join(audioChunksDir, 'chunk-%03d.mp3'))
+                        .on('end', resolve)
+                        .on('error', reject)
+                        .run();
+                });
+                // Google Speech-to-Text
+                const speech = require('@google-cloud/speech');
+                const client = new speech.SpeechClient();
+                const chunkFiles = await fsPromises.readdir(audioChunksDir);
+                let allTranscripts = [];
+                for (const chunkFile of chunkFiles) {
+                    const chunkPath = path.join(audioChunksDir, chunkFile);
+                    const file = await fsPromises.readFile(chunkPath);
+                    const audioBytes = file.toString('base64');
+                    const audio = { content: audioBytes };
+                    const config = {
+                        encoding: 'MP3',
+                        sampleRateHertz: 44100,
+                        languageCode: userProvidedLanguageCode || 'en-US',
+                        enableWordTimeOffsets: true
+                    };
+                    const request = { audio, config };
+                    const [response] = await client.recognize(request);
+                    if (response.results && response.results.length > 0) {
+                        allTranscripts.push(...response.results.map(result => ({
+                            text: result.alternatives[0].transcript,
+                            start: result.alternatives[0].words && result.alternatives[0].words[0] ? parseFloat(result.alternatives[0].words[0].startTime.seconds || 0) : 0,
+                            duration: result.alternatives[0].words && result.alternatives[0].words.length > 1 ?
+                                parseFloat(result.alternatives[0].words[result.alternatives[0].words.length - 1].endTime.seconds || 0) - parseFloat(result.alternatives[0].words[0].startTime.seconds || 0)
+                                : 0
+                        })));
+                    }
+                }
+                const job = activeJobs.get(jobId);
+                if (job) {
+                  job.transcript = allTranscripts;
+                }
+                return { transcript: allTranscripts };
+            } catch (sttErr) {
+                console.error('Google Speech-to-Text error:', sttErr);
+                const job = activeJobs.get(jobId);
+                if (job) {
+                  job.error = job.error ? `${job.error}, Transcript Error: ${sttErr.message}` : `Transcript Error: ${sttErr.message}`;
+                }
+                throw sttErr;
             }
-            throw err; // Re-throw to propagate the error
         }
     })();
 
@@ -186,17 +295,19 @@ router.post('/process-video', async (req, res) => {
                     }
                 });
 
+                // Enforce shorts limit for free/paid users
+                const limitedSegments = suggestedSegments.slice(0, maxShorts);
+                const job = activeJobs.get(jobId);
+                if (job) {
+                  job.segments = limitedSegments;
+                }
+                return { segments: limitedSegments };
+
             } catch (parseError) {
                 console.error('Failed to parse Gemini response as JSON array during processing:', parseError);
                 console.error('Raw response text:', text); // Debug log
                 throw new Error(`Failed to parse Gemini response: ${parseError.message}`);
             }
-
-            const job = activeJobs.get(jobId);
-            if (job) {
-              job.segments = suggestedSegments;
-            }
-            return { segments: suggestedSegments };
 
         } catch (err) {
             console.error('Gemini analysis error during processing:', err);
@@ -228,12 +339,15 @@ router.post('/process-video', async (req, res) => {
                     ffmpeg(videoPath)
                         .seekInput(segment.startTime)
                         .duration(segment.duration)
+                        .outputOptions([
+                          '-vf',
+                          // Robust vertical portrait filter
+                          "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,format=yuv420p"
+                        ])
                         .output(outputFilePath)
                         .on('end', () => resolve())
                         .on('error', (err) => reject(err))
-                        .run((err) => {
-                            if (err) reject(err);
-                        });
+                        .run();
                 });
                 shortFiles.push(outputFilePath);
             } catch (err) {
@@ -243,7 +357,9 @@ router.post('/process-video', async (req, res) => {
             }
         }
 
-        job.shorts = shortFiles;
+        job.shorts = shortFiles.map(filePath =>
+          `/shorts/${jobId}/${path.basename(filePath)}`
+        );
         // Only set status to completed if there were no cutting errors
         if (!job.error || !job.error.includes('Cutting Error')) {
              job.status = 'completed';
@@ -252,6 +368,17 @@ router.post('/process-video', async (req, res) => {
             job.status = 'completed_with_errors';
         } else {
             job.status = 'error';
+        }
+
+        // Decrement credits for free users
+        if (userTier === 'free') {
+            const { error: updateError } = await supabase
+                .from('user_credits')
+                .update({ credits: userCredits - 1 })
+                .eq('user_id', userId);
+            if (updateError) {
+                console.error('Failed to decrement credits:', updateError);
+            }
         }
 
     }).catch(err => {

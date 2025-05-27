@@ -14,16 +14,16 @@ export const AuthProvider = ({ children }) => {
     try {
       // Check if user already has credits
       const { data: existingUser } = await supabase
-        .from('users')
+        .from('user_credits')
         .select('credits')
-        .eq('id', userId)
-        .single();
+        .eq('user_id', userId)
+        .maybeSingle();
 
       if (!existingUser) {
-        // New user - give 2 free credits
+        // New user - give 2 free credits and set tier to free
         await supabase
-          .from('users')
-          .insert([{ id: userId, credits: 2 }]);
+          .from('user_credits')
+          .insert([{ user_id: userId, credits: 2, tier: 'free' }]);
         setCredits(2);
       } else {
         setCredits(existingUser.credits);

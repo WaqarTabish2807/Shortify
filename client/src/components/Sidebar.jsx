@@ -1,14 +1,36 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { MdDashboard, MdSettings } from "react-icons/md";
 import { CiWallet } from "react-icons/ci";
-import { FaPagelines } from "react-icons/fa";
+import { FaPagelines, FaVideo } from "react-icons/fa";
 import { FiMessageCircle } from "react-icons/fi";
 import { useAuth } from "../context/AuthContext";
+import { supabase } from "../supabase/client";
 
 const Sidebar = ({ isMobile, isDarkMode, activePage }) => {
-  const { credits } = useAuth();
-  const maxCredits = 2; // Maximum credits a user can have
+  const { user } = useAuth();
+  const [credits, setCredits] = useState(0);
+  const [tier, setTier] = useState('free');
+  const maxCredits = 2; // Default for free, can be 50 for paid if you want
   const creditPercentage = (credits / maxCredits) * 100;
+
+  useEffect(() => {
+    const fetchCreditsAndTier = async () => {
+      if (!user) return;
+      const { data, error } = await supabase
+        .from('user_credits')
+        .select('credits, tier')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      if (data) {
+        setCredits(data.credits || 0);
+        setTier(data.tier || 'free');
+      } else {
+        setCredits(0);
+        setTier('free');
+      }
+    };
+    fetchCreditsAndTier();
+  }, [user]);
 
   return (
     <div style={{
@@ -34,6 +56,15 @@ const Sidebar = ({ isMobile, isDarkMode, activePage }) => {
         }}>
           <span style={{ display: 'flex', alignItems: 'center', fontSize: 22, marginRight: 14 }}><MdDashboard /></span>
           Dashboard
+        </a>
+        <a href="/my-shorts" style={{
+          display: 'flex', alignItems: 'center', padding: '12px 32px',
+          background: activePage === 'my-shorts' ? (isDarkMode ? '#2a2a2a' : '#f6f7f9') : 'transparent',
+          borderRadius: 8, color: activePage === 'my-shorts' ? (isDarkMode ? '#fff' : '#222') : '#555',
+          fontWeight: 500, textDecoration: 'none', marginBottom: 8
+        }}>
+          <span style={{ display: 'flex', alignItems: 'center', fontSize: 22, marginRight: 14 }}><FaVideo /></span>
+          My Shorts
         </a>
         <a href="/pricing" style={{
           display: 'flex', alignItems: 'center', padding: '12px 32px',
@@ -128,6 +159,9 @@ const Sidebar = ({ isMobile, isDarkMode, activePage }) => {
               borderRadius: 3,
               transition: 'width 0.3s ease'
             }} />
+          </div>
+          <div style={{ color: isDarkMode ? '#aaa' : '#666', fontSize: 14, marginTop: 8 }}>
+            <strong>Tier:</strong> {tier === 'paid' ? 'Premium' : 'Free'}
           </div>
         </div>
       </div>

@@ -9,6 +9,11 @@ import Pricing from './pages/pricing';
 import Account from './pages/account';
 import Homepage from './pages/homepage';
 import Auth from './components/auth/authForm';
+import ProcessingPage from './pages/ProcessingPage';
+import ShortsResultPage from './pages/ShortsResultPage';
+import MyShortsPage from './pages/MyShortsPage';
+import { ToastContainer, Slide } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 
 const App = () => {
   return (
@@ -30,9 +35,26 @@ const App = () => {
                   <Account />
                 </ProtectedRoute>
               } />
+              <Route path="/processing" element={<ProcessingPage />} />
+              <Route path="/shorts-result" element={<ShortsResultPage />} />
+              <Route path="/my-shorts" element={<MyShortsPage />} />
               <Route path="/" element={<Navigate to="/dashboard" replace />} />
-              {/* <Route path="*" element={<NotFound />} /> */}
           </Routes>
+          <ToastContainer
+            position="top-right"
+            autoClose={4000}
+            hideProgressBar={false}
+            newestOnTop
+            closeOnClick
+            rtl={false}
+            pauseOnFocusLoss
+            draggable
+            pauseOnHover
+            theme="colored"
+            transition={Slide}
+            limit={2}
+            style={{ zIndex: 9999, fontFamily: 'Montserrat', fontWeight: 400, letterSpacing: 0.05 }}
+          />
           </VideoProcessingProvider>
         </AuthProvider>
         </Router>
