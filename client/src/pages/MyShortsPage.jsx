@@ -248,7 +248,7 @@ const MyShortsPage = () => {
                       gap: 16,
                       justifyContent: 'center',
                     }}>
-                      {item.shorts.map((short, i) => (
+                  {item.shorts.map((short, i) => (
                         <div key={i} style={{ 
                           minWidth: 180,
                           maxWidth: 200,

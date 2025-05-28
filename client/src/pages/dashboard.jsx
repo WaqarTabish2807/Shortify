@@ -39,7 +39,7 @@ const Dashboard = () => {
   const [screenWidth, setScreenWidth] = useState(window.innerWidth);
   const [videoId, setVideoId] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
-  const [setError] = useState("");
+  const [error, setError] = useState("");
   const [languageCode, setLanguageCode] = useState('en-US');
   const navigate = useNavigate();
 
