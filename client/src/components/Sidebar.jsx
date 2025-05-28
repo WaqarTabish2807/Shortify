@@ -16,7 +16,7 @@ const Sidebar = ({ isMobile, isDarkMode, activePage }) => {
   useEffect(() => {
     const fetchCreditsAndTier = async () => {
       if (!user) return;
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from('user_credits')
         .select('credits, tier')
         .eq('user_id', user.id)

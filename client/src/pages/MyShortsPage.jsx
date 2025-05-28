@@ -108,7 +108,7 @@ const MyShortsPage = () => {
             }}>
               My Shorts
             </h1>
-            {myShorts.length === 0 ? (
+        {myShorts.length === 0 ? (
               <div style={{ 
                 color: isDarkMode ? '#bbb' : '#666', 
                 fontSize: 13, 
@@ -119,11 +119,11 @@ const MyShortsPage = () => {
                 borderRadius: 8,
                 border: isDarkMode ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(0,0,0,0.05)',
               }}>
-                You haven't generated any shorts yet.
-              </div>
-            ) : (
+            You haven't generated any shorts yet.
+          </div>
+        ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-                {myShorts.map((item, idx) => (
+            {myShorts.map((item, idx) => (
                   <div key={item.jobId} style={{ 
                     background: isDarkMode ? '#23272f' : '#f9fafb', 
                     borderRadius: 12, 
@@ -139,19 +139,19 @@ const MyShortsPage = () => {
                       display: 'flex',
                       gap: '8px',
                     }}>
-                      <button
+                <button
                         onClick={() => setShowOptions(showOptions === item.jobId ? null : item.jobId)}
-                        style={{
-                          background: isDarkMode ? '#2d2d2d' : '#eee',
+                  style={{
+                    background: isDarkMode ? '#2d2d2d' : '#eee',
                           color: isDarkMode ? '#fff' : '#666',
-                          border: 'none',
+                    border: 'none',
                           borderRadius: 4,
                           padding: '4px 8px',
                           marginBottom: 10,
-                          fontWeight: 600,
+                    fontWeight: 600,
                           fontSize: 11,
-                          cursor: 'pointer',
-                          boxShadow: '0 1px 4px #0001',
+                    cursor: 'pointer',
+                    boxShadow: '0 1px 4px #0001',
                           transition: 'all 0.2s ease',
                           display: 'flex',
                           alignItems: 'center',
@@ -215,10 +215,10 @@ const MyShortsPage = () => {
                             }}
                           >
                             <FaTrash size={12} /> Delete
-                          </button>
+                </button>
                         </div>
                       )}
-                    </div>
+                </div>
                     <div style={{ 
                       fontWeight: 600, 
                       fontSize: 14, 
@@ -230,7 +230,7 @@ const MyShortsPage = () => {
                     }}>
                       <span style={{ color: isDarkMode ? '#888' : '#666' }}>Video:</span>
                       <span style={{ fontWeight: 400 }}>{item.videoName || `Video ${idx + 1}`}</span>
-                    </div>
+                </div>
                     <div style={{ 
                       color: isDarkMode ? '#aaa' : '#888', 
                       fontSize: 11, 
@@ -302,14 +302,14 @@ const MyShortsPage = () => {
                           >
                             <FaDownload size={12} /> Download
                           </a>
-                        </div>
-                      ))}
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
-            )}
+            ))}
           </div>
+        )}
+      </div>
         </div>
       </div>
       {showDeleteConfirm && (

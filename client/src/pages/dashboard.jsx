@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect } from "react";
 import Navbar from "../components/Navbar";
 import Sidebar from "../components/Sidebar";
 import { useTheme } from "../context/ThemeContext";
@@ -39,7 +39,7 @@ const Dashboard = () => {
   const [screenWidth, setScreenWidth] = useState(window.innerWidth);
   const [videoId, setVideoId] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
-  const [error, setError] = useState("");
+  const [setError] = useState("");
   const [languageCode, setLanguageCode] = useState('en-US');
   const navigate = useNavigate();
 
