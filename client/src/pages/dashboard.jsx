@@ -111,7 +111,7 @@ const Dashboard = () => {
             color: isDarkMode ? '#fff' : '#000',
             overflow: 'visible',
           }}>
-            <div style={{ fontWeight: 700, fontSize: isMobile ? 18 : 22, marginBottom: isMobile ? 16 : 8 }}>Create YouTube Short</div>
+            <div style={{ fontWeight: 700, fontSize: isMobile ? 18 : 22, marginBottom: isMobile ? 16 : 8 }}>Create YouTube Shorts</div>
             <div style={{ color: isDarkMode ? '#888' : '#888', fontSize: isMobile ? 14 : 15, marginBottom: isMobile ? 20 : 24 }}>Transform your YouTube videos into engaging shorts</div>
             <div style={{ textAlign: 'left', fontWeight: 500, fontSize: isMobile ? 13 : 14, marginBottom: isMobile ? 4 : 6 }}>YouTube Video URL</div>
             <div style={{ width: '100%' }}>
@@ -255,7 +255,7 @@ const Dashboard = () => {
                 >
                   {isProcessing ? (
                     <>
-                      <FaSpinner className="animate-spin -ml-1 mr-2 h-4 w-4" />
+                      <FaSpinner className="animate-spin -ml-1 mr-2 h-4 w-4" style={{ marginRight: 8 }} />
                       Processing...
                     </>
                   ) : (
