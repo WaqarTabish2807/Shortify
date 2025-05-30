@@ -264,7 +264,7 @@ router.post('/process-video', async (req, res) => {
         try {
             const prompt = `Analyze this TED talk transcript and identify 2-4 high-quality segments that would make engaging short-form content. \n\nImportant requirements:\n1. Each segment MUST be 25-30 seconds when spoken\n2. Select the most impactful, emotional, or thought-provoking moments\n3. Each segment should be a complete thought that makes sense on its own\n4. Focus on segments with clear messages, personal stories, or powerful quotes\n5. Avoid segments with audience reactions (laughter, applause) unless they\'re part of a key moment\n6. Use exact timestamps from the transcript\n\nFormat the output as a JSON array of objects, where each object has:\n- text: the segment text\n- startTime: the exact start time in seconds from the transcript\n- duration: the exact duration in seconds from the transcript\n\nExample format:\n[\n  {\n    \"text\": \"First segment text here\",\n    \"startTime\": 30,\n    \"duration\": 25\n  },\n  {\n    \"text\": \"Second segment text here\",\n    \"startTime\": 120,\n    \"duration\": 28\n  }\n]\n\nTranscript (with timestamps):\n\`\`\`\n${JSON.stringify(transcript, null, 2)}\n\`\`\`\n\nJSON array of segments with exact timestamps:`;
 
-            const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
+            const model = genAI.getGenerativeModel({ model: "gemini-2.5-pro-preview-05-06" });
 
             console.log('Sending transcript to Gemini for analysis...');
             const result = await model.generateContent(prompt);

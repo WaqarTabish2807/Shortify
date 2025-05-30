@@ -12,6 +12,8 @@ import Auth from './components/auth/authForm';
 import ProcessingPage from './pages/ProcessingPage';
 import ShortsResultPage from './pages/ShortsResultPage';
 import MyShortsPage from './pages/MyShortsPage';
+import newDashboard from './pages/newDashboard';
+import NewDashboard from './pages/newDashboard';
 import { ToastContainer, Slide } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
@@ -38,6 +40,7 @@ const App = () => {
               <Route path="/processing" element={<ProcessingPage />} />
               <Route path="/shorts-result" element={<ShortsResultPage />} />
               <Route path="/my-shorts" element={<MyShortsPage />} />
+              <Route path="/new-dashboard" element={<NewDashboard />} />
               <Route path="/" element={<Navigate to="/dashboard" replace />} />
           </Routes>
           <ToastContainer
