@@ -8,30 +8,7 @@ import Select from 'react-select';
 import { supabase } from "../supabase/client";
 import { FaSpinner } from 'react-icons/fa';
 import { toast } from 'react-toastify';
-
-const languageOptions = [
-  { code: 'en-US', label: 'English (US)' },
-  { code: 'en-GB', label: 'English (UK)' },
-  { code: 'hi-IN', label: 'Hindi' },
-  { code: 'es-ES', label: 'Spanish (Spain)' },
-  { code: 'fr-FR', label: 'French' },
-  { code: 'de-DE', label: 'German' },
-  { code: 'it-IT', label: 'Italian' },
-  { code: 'ru-RU', label: 'Russian' },
-  { code: 'ja-JP', label: 'Japanese' },
-  { code: 'ko-KR', label: 'Korean' },
-  { code: 'zh', label: 'Chinese' },
-  { code: 'ar-XA', label: 'Arabic' },
-  { code: 'pt-BR', label: 'Portuguese (Brazil)' },
-  { code: 'bn-IN', label: 'Bengali' },
-  { code: 'pa-IN', label: 'Punjabi' },
-  { code: 'mr-IN', label: 'Marathi' },
-  { code: 'ta-IN', label: 'Tamil' },
-  { code: 'te-IN', label: 'Telugu' },
-  { code: 'gu-IN', label: 'Gujarati' },
-  { code: 'ur-IN', label: 'Urdu' },
-  // ...add more as needed
-];
+import languageOptions from '../data/languageOptions';
 
 const Dashboard = () => {
   const { isDarkMode } = useTheme();
@@ -39,8 +16,8 @@ const Dashboard = () => {
   const [screenWidth, setScreenWidth] = useState(window.innerWidth);
   const [videoId, setVideoId] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
-  const [error, setError] = useState("");
   const [languageCode, setLanguageCode] = useState('en-US');
+  const [isButtonDisabled, setIsButtonDisabled] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -53,8 +30,8 @@ const Dashboard = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError(null);
     setIsProcessing(true);
+    setIsButtonDisabled(true);
     try {
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
       if (sessionError) throw sessionError;
@@ -74,7 +51,6 @@ const Dashboard = () => {
         if (response.status === 403) {
           const errorMsg = 'You are out of credits. Please upgrade to Pro to continue.';
           toast.error(errorMsg, { position: 'top-right' });
-          setError(errorMsg);
         } else {
           throw new Error(data.error || 'Failed to process video');
         }
@@ -85,7 +61,6 @@ const Dashboard = () => {
         navigate('/processing', { state: { jobId: data.jobId, videoId } });
       }
     } catch (err) {
-      setError(err.message);
       toast.error(err.message);
     } finally {
       setIsProcessing(false);
@@ -236,6 +211,7 @@ const Dashboard = () => {
                   isSearchable
                 />
                 <button
+                  disabled={isProcessing || isButtonDisabled}
                   style={{
                     flex: 1,
                     background: isDarkMode ? 'white' : '#111',

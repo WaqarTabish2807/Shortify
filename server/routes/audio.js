@@ -11,6 +11,12 @@ const ffmpegPath = require('ffmpeg-static');
 const ffmpeg = require('fluent-ffmpeg');
 const fs = require('fs');
 const { createClient } = require('@supabase/supabase-js');
+const {
+  uploadToSupabase,
+  downloadFromSupabase,
+  getPublicUrl,
+  deleteFromSupabase,
+} = require('../supabaseUtils');
 
 // Initialize Supabase client
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
@@ -52,7 +58,7 @@ const activeJobs = new Map();
 
 // New endpoint to start parallel processing
 router.post('/process-video', async (req, res) => {
-  const { videoId, languageCode: userProvidedLanguageCode } = req.body;
+  const { videoId, languageCode: userProvidedLanguageCode, clipLength, layout, template } = req.body;
   if (!videoId) {
     return res.status(400).json({ error: 'Missing YouTube video ID.' });
   }
@@ -105,15 +111,50 @@ router.post('/process-video', async (req, res) => {
     // Generate unique job ID
     const jobId = uuidv4();
     const timestamp = Date.now();
-    const outputPath = path.join(__dirname, '..', 'temp', `video-${timestamp}.mp4`);
-    const shortsDir = path.join(__dirname, '..', 'temp', jobId);
-    await fsPromises.mkdir(shortsDir, { recursive: true });
+    const tempBucket = 'temp';
+    const shortsBucket = 'shorts';
+    const tempVideoPath = `originals/original-${jobId}.mp4`;
+
+    // Remove local temp file/dir creation
+    // await fsPromises.mkdir(shortsDir, { recursive: true });
+
+    // Stream YouTube video and upload to Supabase in-memory
+    await new Promise((resolve, reject) => {
+      const passThrough = new (require('stream').PassThrough)();
+      const ytdlStream = ytdl(videoId, { quality: 'highest', filter: 'videoandaudio' });
+      ytdlStream.pipe(passThrough);
+      const chunks = [];
+      passThrough.on('data', chunk => chunks.push(chunk));
+      passThrough.on('end', async () => {
+        const buffer = Buffer.concat(chunks);
+        console.log('YouTube video buffer size before upload:', buffer.length);
+        if (buffer.length < 1000000) { // <1MB, likely invalid
+          require('fs').writeFileSync('debug-upload-video.mp4', buffer);
+          console.error('Buffer is too small, wrote debug-upload-video.mp4');
+        }
+        try {
+          await uploadToSupabase(tempBucket, tempVideoPath, buffer, 'video/mp4');
+          resolve();
+        } catch (err) {
+          console.error('Error uploading to Supabase:', err);
+          reject(err);
+        }
+      });
+      passThrough.on('error', err => {
+        console.error('Error in YouTube download stream:', err);
+        reject(err);
+      });
+      ytdlStream.on('error', err => {
+        console.error('Error in ytdl stream:', err);
+        reject(err);
+      });
+    });
 
     // Initialize job status
     activeJobs.set(jobId, {
       status: 'processing',
       videoId,
-      outputPath,
+      outputPath: tempVideoPath,
       downloadProgress: 0,
       transcript: null,
       segments: null,
@@ -122,43 +163,6 @@ router.post('/process-video', async (req, res) => {
       userId,
       userTier,
       maxShorts
-    });
-
-    // Start video download in background
-    const downloadPromise = new Promise((resolve, reject) => {
-      const video = ytdl(videoId, {
-        quality: 'highest',
-        filter: 'videoandaudio'
-      });
-
-      const writeStream = createWriteStream(outputPath);
-
-      video.pipe(writeStream);
-
-      video.on('progress', (_, downloaded, total) => {
-        const progress = (downloaded / total) * 100;
-        const job = activeJobs.get(jobId);
-        if (job) {
-          job.downloadProgress = progress;
-        }
-      });
-
-      writeStream.on('finish', () => {
-        const job = activeJobs.get(jobId);
-        if (job) {
-          job.status = 'downloaded';
-        }
-        resolve();
-      });
-
-      writeStream.on('error', (err) => {
-        const job = activeJobs.get(jobId);
-        if (job) {
-          job.status = 'error';
-          job.error = err.message;
-        }
-        reject(err);
-      });
     });
 
     // --- Integrated Transcript Fetching Logic ---
@@ -187,37 +191,24 @@ router.post('/process-video', async (req, res) => {
             }
         } catch (err) {
             console.warn('YouTube transcript not found, falling back to Google Speech-to-Text:', err.message);
-            // Fallback: Use Google Speech-to-Text with chunking
+            // Fallback: Use Google Speech-to-Text with chunking (in-memory, no disk)
             try {
-                // Download audio only
-                const audioPath = path.join(__dirname, '..', 'temp', `audio-${Date.now()}.mp3`);
-                await new Promise((resolve, reject) => {
-                    ytdl(videoId, { filter: 'audioonly', quality: 'highestaudio' })
-                        .pipe(fs.createWriteStream(audioPath))
-                        .on('finish', resolve)
-                        .on('error', reject);
-                });
-                // Split audio into 1-minute chunks using ffmpeg
-                const ffmpeg = require('fluent-ffmpeg');
-                const audioChunksDir = path.join(__dirname, '..', 'temp', `audio-chunks-${Date.now()}`);
-                await fsPromises.mkdir(audioChunksDir, { recursive: true });
-                await new Promise((resolve, reject) => {
-                    ffmpeg(audioPath)
-                        .outputOptions('-f segment', '-segment_time 60', '-c copy')
-                        .output(path.join(audioChunksDir, 'chunk-%03d.mp3'))
-                        .on('end', resolve)
-                        .on('error', reject)
-                        .run();
-                });
-                // Google Speech-to-Text
                 const speech = require('@google-cloud/speech');
                 const client = new speech.SpeechClient();
-                const chunkFiles = await fsPromises.readdir(audioChunksDir);
-                let allTranscripts = [];
-                for (const chunkFile of chunkFiles) {
-                    const chunkPath = path.join(audioChunksDir, chunkFile);
-                    const file = await fsPromises.readFile(chunkPath);
-                    const audioBytes = file.toString('base64');
+                const { PassThrough } = require('stream');
+                
+                // 1. Download audio as stream from YouTube
+                const audioStream = ytdl(videoId, { filter: 'audioonly', quality: 'highestaudio' });
+                
+                // 2. Use ffmpeg to chunk audio into 60s segments, output as mp3 to memory
+                const chunkBuffers = [];
+                let currentBuffer = [];
+                let chunkIndex = 0;
+                let chunkPromises = [];
+                
+                // Helper to process a single chunk buffer with Google STT
+                async function processChunkBuffer(buffer) {
+                  const audioBytes = buffer.toString('base64');
                     const audio = { content: audioBytes };
                     const config = {
                         encoding: 'MP3',
@@ -227,15 +218,55 @@ router.post('/process-video', async (req, res) => {
                     };
                     const request = { audio, config };
                     const [response] = await client.recognize(request);
-                    if (response.results && response.results.length > 0) {
-                        allTranscripts.push(...response.results.map(result => ({
+                  return response.results && response.results.length > 0
+                    ? response.results.map(result => ({
                             text: result.alternatives[0].transcript,
                             start: result.alternatives[0].words && result.alternatives[0].words[0] ? parseFloat(result.alternatives[0].words[0].startTime.seconds || 0) : 0,
-                            duration: result.alternatives[0].words && result.alternatives[0].words.length > 1 ?
-                                parseFloat(result.alternatives[0].words[result.alternatives[0].words.length - 1].endTime.seconds || 0) - parseFloat(result.alternatives[0].words[0].startTime.seconds || 0)
-                                : 0
-                        })));
-                    }
+                        duration: result.alternatives[0].words && result.alternatives[0].words.length > 1
+                          ? parseFloat(result.alternatives[0].words[result.alternatives[0].words.length - 1].endTime.seconds || 0) - parseFloat(result.alternatives[0].words[0].startTime.seconds || 0)
+                          : 0
+                      }))
+                    : [];
+                }
+
+                // 3. Set up ffmpeg to segment audio
+                await new Promise((resolve, reject) => {
+                  const ffmpegCommand = ffmpeg(audioStream)
+                    .audioCodec('libmp3lame')
+                    .format('mp3')
+                    .outputOptions('-f segment', '-segment_time 60', '-c copy')
+                    .on('start', () => {
+                      chunkIndex = 0;
+                    })
+                    .on('error', err => reject(err));
+
+                  // ffmpeg emits 'data' for each chunk
+                  ffmpegCommand.pipe()
+                    .on('data', chunk => {
+                      currentBuffer.push(chunk);
+                    })
+                    .on('end', async () => {
+                      // Last chunk
+                      if (currentBuffer.length > 0) {
+                        chunkBuffers.push(Buffer.concat(currentBuffer));
+                        currentBuffer = [];
+                      }
+                      resolve();
+                    })
+                    .on('close', () => {
+                      if (currentBuffer.length > 0) {
+                        chunkBuffers.push(Buffer.concat(currentBuffer));
+                        currentBuffer = [];
+                      }
+                      resolve();
+                    });
+                });
+
+                // 4. Process each chunk buffer with Google STT
+                let allTranscripts = [];
+                for (const buffer of chunkBuffers) {
+                  const chunkTranscript = await processChunkBuffer(buffer);
+                  allTranscripts.push(...chunkTranscript);
                 }
                 const job = activeJobs.get(jobId);
                 if (job) {
@@ -261,10 +292,20 @@ router.post('/process-video', async (req, res) => {
             throw new Error('Missing or invalid transcript data for analysis.');
         }
 
-        try {
-            const prompt = `Analyze this TED talk transcript and identify 2-4 high-quality segments that would make engaging short-form content. \n\nImportant requirements:\n1. Each segment MUST be 25-30 seconds when spoken\n2. Select the most impactful, emotional, or thought-provoking moments\n3. Each segment should be a complete thought that makes sense on its own\n4. Focus on segments with clear messages, personal stories, or powerful quotes\n5. Avoid segments with audience reactions (laughter, applause) unless they\'re part of a key moment\n6. Use exact timestamps from the transcript\n\nFormat the output as a JSON array of objects, where each object has:\n- text: the segment text\n- startTime: the exact start time in seconds from the transcript\n- duration: the exact duration in seconds from the transcript\n\nExample format:\n[\n  {\n    \"text\": \"First segment text here\",\n    \"startTime\": 30,\n    \"duration\": 25\n  },\n  {\n    \"text\": \"Second segment text here\",\n    \"startTime\": 120,\n    \"duration\": 28\n  }\n]\n\nTranscript (with timestamps):\n\`\`\`\n${JSON.stringify(transcript, null, 2)}\n\`\`\`\n\nJSON array of segments with exact timestamps:`;
+        // Determine min/max duration from clipLength
+        let minDuration = 25, maxDuration = 30;
+        if (clipLength === '<30s') {
+          minDuration = 10; maxDuration = 29;
+        } else if (clipLength === '30s-60s') {
+          minDuration = 30; maxDuration = 60;
+        } else if (clipLength === '60s-90s') {
+          minDuration = 60; maxDuration = 90;
+        }
 
-            const model = genAI.getGenerativeModel({ model: "gemini-2.5-pro-preview-05-06" });
+        try {
+            const prompt = `Analyze this TED talk transcript and identify 2-4 high-quality segments that would make engaging short-form content. \n\nImportant requirements:\n1. Each segment MUST be ${minDuration}-${maxDuration} seconds when spoken\n2. Select the most impactful, emotional, or thought-provoking moments\n3. Each segment should be a complete thought that makes sense on its own\n4. Focus on segments with clear messages, personal stories, or powerful quotes\n5. Avoid segments with audience reactions (laughter, applause) unless they're part of a key moment\n6. Use exact timestamps from the transcript\n\nFormat the output as a JSON array of objects, where each object has:\n- text: the segment text\n- startTime: the exact start time in seconds from the transcript\n- duration: the exact duration in seconds from the transcript\n\nExample format:\n[\n  {\n    "text": "First segment text here",\n    "startTime": 30,\n    "duration": 25\n  },\n  {\n    "text": "Second segment text here",\n    "startTime": 120,\n    "duration": 28\n  }\n]\n\nTranscript (with timestamps):\n\`\`\`\n${JSON.stringify(transcript, null, 2)}\n\`\`\`\n\nJSON array of segments with exact timestamps:`;
+
+            const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
 
             console.log('Sending transcript to Gemini for analysis...');
             const result = await model.generateContent(prompt);
@@ -320,56 +361,89 @@ router.post('/process-video', async (req, res) => {
     });
 
     // --- Integrated Cutting Logic (Waits for download and analysis) ---
-    Promise.all([downloadPromise, analysisPromise]).then(async ([_, analysisData]) => {
+    Promise.all([analysisPromise]).then(async ([analysisData]) => {
         const job = activeJobs.get(jobId);
-        if (!job || !job.segments || job.status === 'error') return; // Don't proceed if there's an error or no segments
-
+      if (!job || !job.segments || job.status === 'error') return;
         job.status = 'cutting';
         const segments = job.segments;
-        const videoPath = job.outputPath;
-        const shortFiles = [];
-
+      const shortUrls = [];
+      const ffmpeg = require('fluent-ffmpeg');
+      const { Readable } = require('stream');
+      // 1. Get info and select a valid webm or mp4 format from ytdl
+      const info = await ytdl.getInfo(videoId);
+      let selectedFormat = info.formats.find(
+        f => f.container === 'webm' && f.hasVideo && f.hasAudio
+      );
+      let inputFormat = 'webm';
+      if (!selectedFormat) {
+        // Fallback to mp4
+        selectedFormat = info.formats.find(
+          f => f.container === 'mp4' && f.hasVideo && f.hasAudio
+        );
+        inputFormat = 'mp4';
+      }
+      if (!selectedFormat) {
+        throw new Error('No suitable webm or mp4 format found for this video.');
+      }
+      const ytdlStream = ytdl.downloadFromInfo(info, { format: selectedFormat });
+      const chunks = [];
+      for await (const chunk of ytdlStream) {
+        chunks.push(chunk);
+      }
+      const videoBuffer = Buffer.concat(chunks);
+      // 2. For each segment, use a Readable stream from the buffer
         for (let i = 0; i < segments.length; i++) {
             const segment = segments[i];
             const outputFileName = `short-${i + 1}.mp4`;
-            const outputFilePath = path.join(shortsDir, outputFileName);
-
-            try {
-                await new Promise((resolve, reject) => {
-                    ffmpeg(videoPath)
-                        .seekInput(segment.startTime)
+        const outputPath = `${jobId}/${outputFileName}`;
+        // 1. Generate .ts buffer
+        const tsBuffer = await new Promise((resolve, reject) => {
+          const outputChunks = [];
+          const inputStream = Readable.from(videoBuffer);
+          const ffmpegStream = ffmpeg(inputStream)
+            .inputFormat(inputFormat)
+            .addInputOption('-analyzeduration', '2147483647')
+            .addInputOption('-probesize', '2147483647')
+            .setStartTime(segment.startTime)
                         .duration(segment.duration)
-                        .outputOptions([
-                          '-vf',
-                          // Robust vertical portrait filter
-                          "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,format=yuv420p"
-                        ])
-                        .output(outputFilePath)
-                        .on('end', () => resolve())
-                        .on('error', (err) => reject(err))
-                        .run();
-                });
-                shortFiles.push(outputFilePath);
-            } catch (err) {
-                console.error(`Error cutting segment ${i + 1}:`, err);
-                job.error = job.error ? `${job.error}, Cutting Error Segment ${i + 1}: ${err.message}` : `Cutting Error Segment ${i + 1}: ${err.message}`;;
-                // Continue to try cutting other segments
-            }
-        }
-
-        job.shorts = shortFiles.map(filePath =>
-          `/shorts/${jobId}/${path.basename(filePath)}`
-        );
-        // Only set status to completed if there were no cutting errors
-        if (!job.error || !job.error.includes('Cutting Error')) {
+            .videoCodec('libx264')
+            .audioCodec('aac')
+            .format('mpegts')
+            .on('stderr', data => console.log('ffmpeg stderr (ts):', data.toString()))
+            .on('error', reject)
+            .on('end', () => {
+              resolve(Buffer.concat(outputChunks));
+            })
+            .pipe();
+          ffmpegStream.on('data', chunk => outputChunks.push(chunk));
+        });
+        // 2. Convert .ts buffer to .mp4 buffer
+        const mp4Buffer = await new Promise((resolve, reject) => {
+          const outputChunks = [];
+          const inputStream = Readable.from(tsBuffer);
+          const ffmpegStream = ffmpeg(inputStream)
+            .inputFormat('mpegts')
+            .videoCodec('libx264')
+            .audioCodec('aac')
+            .format('mp4')
+            .addOutputOption('-movflags', 'frag_keyframe+empty_moov')
+            .on('stderr', data => console.log('ffmpeg stderr (mp4):', data.toString()))
+            .on('error', reject)
+            .on('end', () => {
+              resolve(Buffer.concat(outputChunks));
+            })
+            .pipe();
+          ffmpegStream.on('data', chunk => outputChunks.push(chunk));
+        });
+        // 3. Upload .mp4 to Supabase
+        await uploadToSupabase(shortsBucket, outputPath, mp4Buffer, 'video/mp4');
+        const url = getPublicUrl(shortsBucket, outputPath);
+        shortUrls.push(url);
+      }
+      job.shorts = shortUrls;
              job.status = 'completed';
-        } else if (shortFiles.length > 0) {
-            // If some shorts were created despite errors
-            job.status = 'completed_with_errors';
-        } else {
-            job.status = 'error';
-        }
-
+      // 4. Delete temp video from Supabase
+      await deleteFromSupabase(tempBucket, tempVideoPath);
         // Decrement credits for free users
         if (userTier === 'free') {
             const { error: updateError } = await supabase
@@ -380,7 +454,6 @@ router.post('/process-video', async (req, res) => {
                 console.error('Failed to decrement credits:', updateError);
             }
         }
-
     }).catch(err => {
       console.error('Error in processing pipeline after download/analysis:', err);
       const job = activeJobs.get(jobId);
@@ -422,7 +495,8 @@ router.get('/job-status/:jobId', (req, res) => {
     transcript: job.transcript,
     segments: job.segments,
     shorts: job.shorts,
-    error: job.error
+    error: job.error,
+    duration: job.duration || null
   });
 });
 
