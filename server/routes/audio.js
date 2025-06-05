@@ -127,7 +127,6 @@ router.post('/process-video', async (req, res) => {
       passThrough.on('data', chunk => chunks.push(chunk));
       passThrough.on('end', async () => {
         const buffer = Buffer.concat(chunks);
-        console.log('YouTube video buffer size before upload:', buffer.length);
         if (buffer.length < 1000000) { // <1MB, likely invalid
           require('fs').writeFileSync('debug-upload-video.mp4', buffer);
           console.error('Buffer is too small, wrote debug-upload-video.mp4');
@@ -410,17 +409,12 @@ router.post('/process-video', async (req, res) => {
               .videoCodec('libx264')
               .audioCodec('aac')
               .format('mpegts')
-              .on('stderr', data => console.log('ffmpeg stderr (ts):', data.toString()))
               .on('error', (err) => {
                 console.error('FFmpeg TS error:', err);
                 reject(new Error(`FFmpeg TS error: ${err.message}`));
               })
               .on('end', () => {
-                console.log('FFmpeg TS processing completed');
                 resolve(Buffer.concat(outputChunks));
-              })
-              .on('progress', (progress) => {
-                console.log('FFmpeg TS progress:', progress);
               })
               .setFfmpegPath(ffmpegPath)
               .setFfprobePath(ffmpegPath.replace('ffmpeg', 'ffprobe'))
@@ -431,8 +425,6 @@ router.post('/process-video', async (req, res) => {
             setTimeout(() => reject(new Error('FFmpeg TS conversion timed out after 5 minutes')), 300000)
           )
         ]);
-
-        console.log('TS buffer size:', tsBuffer.length);
 
         // 2. Convert .ts buffer to .mp4 buffer
         const mp4Buffer = await Promise.race([
@@ -445,17 +437,12 @@ router.post('/process-video', async (req, res) => {
               .audioCodec('aac')
               .format('mp4')
               .addOutputOption('-movflags', 'frag_keyframe+empty_moov')
-              .on('stderr', data => console.log('ffmpeg stderr (mp4):', data.toString()))
               .on('error', (err) => {
                 console.error('FFmpeg MP4 error:', err);
                 reject(new Error(`FFmpeg MP4 error: ${err.message}`));
               })
               .on('end', () => {
-                console.log('FFmpeg MP4 processing completed');
                 resolve(Buffer.concat(outputChunks));
-              })
-              .on('progress', (progress) => {
-                console.log('FFmpeg MP4 progress:', progress);
               })
               .setFfmpegPath(ffmpegPath)
               .setFfprobePath(ffmpegPath.replace('ffmpeg', 'ffprobe'))
@@ -467,14 +454,11 @@ router.post('/process-video', async (req, res) => {
           )
         ]);
 
-        console.log('MP4 buffer size:', mp4Buffer.length);
-
         // 3. Upload .mp4 to Supabase
         try {
           await uploadToSupabase(shortsBucket, outputPath, mp4Buffer, 'video/mp4');
           const url = getPublicUrl(shortsBucket, outputPath);
           shortUrls.push(url);
-          console.log('Successfully uploaded short to Supabase:', url);
         } catch (uploadError) {
           console.error('Error uploading to Supabase:', uploadError);
           throw new Error(`Failed to upload short to Supabase: ${uploadError.message}`);

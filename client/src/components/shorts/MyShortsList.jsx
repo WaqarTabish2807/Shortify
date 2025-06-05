@@ -23,43 +23,36 @@ const MyShortsList = ({ myShorts, isDarkMode, showOptions, setShowOptions, showD
   }, [showOptions, setShowOptions]);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      {myShorts.map((item) => (
-        <div key={item.job_id} style={{ 
-          background: isDarkMode ? '#23272f' : '#f9fafb', 
-          borderRadius: 12, 
-          padding: '24px', 
-          boxShadow: isDarkMode ? '0 2px 12px #23272f33' : '0 2px 12px #e0e7ef33',
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 32,
+      width: '100%',
+    }}>
+      {myShorts.map((item, index) => (
+        <div key={item.job_id} style={{
+          background: isDarkMode ? '#23272f' : '#f9fafb',
+          borderRadius: 12,
+          boxShadow: isDarkMode ? '0 4px 20px #23272f33' : '0 4px 20px #e0e7ef33',
+          padding: 20,
           position: 'relative',
           border: isDarkMode ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(0,0,0,0.05)',
         }}>
-          <div style={{ 
-            position: 'absolute',
-            top: 16,
-            right: 16,
-            display: 'flex',
-            gap: '8px',
-          }}>
+          <div style={{ position: 'absolute', top: 10, right: 10, zIndex: 10 }}>
             <button
-              onClick={() => setShowOptions(showOptions === item.job_id ? null : item.job_id)}
+              onClick={(e) => {
+                e.stopPropagation(); // Prevent triggering card click
+                setShowOptions(showOptions === item.job_id ? null : item.job_id);
+              }}
               style={{
-                background: isDarkMode ? '#2d2d2d' : '#eee',
-                color: isDarkMode ? '#fff' : '#666',
+                background: 'none',
                 border: 'none',
-                borderRadius: 4,
-                padding: '4px 8px',
-                marginBottom: 10,
-                fontWeight: 600,
-                fontSize: 11,
+                color: isDarkMode ? '#bbb' : '#888',
                 cursor: 'pointer',
-                boxShadow: '0 1px 4px #0001',
-                transition: 'all 0.2s ease',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px',
+                fontSize: 18,
               }}
             >
-              <FaEllipsisH size={12} />
+              <FaEllipsisH />
             </button>
             {showOptions === item.job_id && (
               <div ref={optionsRef} style={{
@@ -121,7 +114,7 @@ const MyShortsList = ({ myShorts, isDarkMode, showOptions, setShowOptions, showD
             gap: '6px',
           }}>
             <span style={{ color: isDarkMode ? '#888' : '#666' }}>Video:</span>
-            <span style={{ fontWeight: 400 }}>{item.video_name || `Video ${item.job_id}`}</span>
+            <span style={{ fontWeight: 400 }}>{`Video ${index + 1}`}</span>
           </div>
           <div style={{ 
             color: isDarkMode ? '#aaa' : '#888', 
