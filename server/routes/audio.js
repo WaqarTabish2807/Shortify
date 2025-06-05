@@ -397,48 +397,88 @@ router.post('/process-video', async (req, res) => {
             const outputFileName = `short-${i + 1}.mp4`;
         const outputPath = `${jobId}/${outputFileName}`;
         // 1. Generate .ts buffer
-        const tsBuffer = await new Promise((resolve, reject) => {
-          const outputChunks = [];
-          const inputStream = Readable.from(videoBuffer);
-          const ffmpegStream = ffmpeg(inputStream)
-            .inputFormat(inputFormat)
-            .addInputOption('-analyzeduration', '2147483647')
-            .addInputOption('-probesize', '2147483647')
-            .setStartTime(segment.startTime)
-                        .duration(segment.duration)
-            .videoCodec('libx264')
-            .audioCodec('aac')
-            .format('mpegts')
-            .on('stderr', data => console.log('ffmpeg stderr (ts):', data.toString()))
-            .on('error', reject)
-            .on('end', () => {
-              resolve(Buffer.concat(outputChunks));
-            })
-            .pipe();
-          ffmpegStream.on('data', chunk => outputChunks.push(chunk));
-        });
+        const tsBuffer = await Promise.race([
+          new Promise((resolve, reject) => {
+            const outputChunks = [];
+            const inputStream = Readable.from(videoBuffer);
+            const ffmpegStream = ffmpeg(inputStream)
+              .inputFormat(inputFormat)
+              .addInputOption('-analyzeduration', '2147483647')
+              .addInputOption('-probesize', '2147483647')
+              .setStartTime(segment.startTime)
+              .duration(segment.duration)
+              .videoCodec('libx264')
+              .audioCodec('aac')
+              .format('mpegts')
+              .on('stderr', data => console.log('ffmpeg stderr (ts):', data.toString()))
+              .on('error', (err) => {
+                console.error('FFmpeg TS error:', err);
+                reject(new Error(`FFmpeg TS error: ${err.message}`));
+              })
+              .on('end', () => {
+                console.log('FFmpeg TS processing completed');
+                resolve(Buffer.concat(outputChunks));
+              })
+              .on('progress', (progress) => {
+                console.log('FFmpeg TS progress:', progress);
+              })
+              .setFfmpegPath(ffmpegPath)
+              .setFfprobePath(ffmpegPath.replace('ffmpeg', 'ffprobe'))
+              .pipe();
+            ffmpegStream.on('data', chunk => outputChunks.push(chunk));
+          }),
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('FFmpeg TS conversion timed out after 5 minutes')), 300000)
+          )
+        ]);
+
+        console.log('TS buffer size:', tsBuffer.length);
+
         // 2. Convert .ts buffer to .mp4 buffer
-        const mp4Buffer = await new Promise((resolve, reject) => {
-          const outputChunks = [];
-          const inputStream = Readable.from(tsBuffer);
-          const ffmpegStream = ffmpeg(inputStream)
-            .inputFormat('mpegts')
-            .videoCodec('libx264')
-            .audioCodec('aac')
-            .format('mp4')
-            .addOutputOption('-movflags', 'frag_keyframe+empty_moov')
-            .on('stderr', data => console.log('ffmpeg stderr (mp4):', data.toString()))
-            .on('error', reject)
-            .on('end', () => {
-              resolve(Buffer.concat(outputChunks));
-            })
-            .pipe();
-          ffmpegStream.on('data', chunk => outputChunks.push(chunk));
-        });
+        const mp4Buffer = await Promise.race([
+          new Promise((resolve, reject) => {
+            const outputChunks = [];
+            const inputStream = Readable.from(tsBuffer);
+            const ffmpegStream = ffmpeg(inputStream)
+              .inputFormat('mpegts')
+              .videoCodec('libx264')
+              .audioCodec('aac')
+              .format('mp4')
+              .addOutputOption('-movflags', 'frag_keyframe+empty_moov')
+              .on('stderr', data => console.log('ffmpeg stderr (mp4):', data.toString()))
+              .on('error', (err) => {
+                console.error('FFmpeg MP4 error:', err);
+                reject(new Error(`FFmpeg MP4 error: ${err.message}`));
+              })
+              .on('end', () => {
+                console.log('FFmpeg MP4 processing completed');
+                resolve(Buffer.concat(outputChunks));
+              })
+              .on('progress', (progress) => {
+                console.log('FFmpeg MP4 progress:', progress);
+              })
+              .setFfmpegPath(ffmpegPath)
+              .setFfprobePath(ffmpegPath.replace('ffmpeg', 'ffprobe'))
+              .pipe();
+            ffmpegStream.on('data', chunk => outputChunks.push(chunk));
+          }),
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('FFmpeg MP4 conversion timed out after 5 minutes')), 300000)
+          )
+        ]);
+
+        console.log('MP4 buffer size:', mp4Buffer.length);
+
         // 3. Upload .mp4 to Supabase
-        await uploadToSupabase(shortsBucket, outputPath, mp4Buffer, 'video/mp4');
-        const url = getPublicUrl(shortsBucket, outputPath);
-        shortUrls.push(url);
+        try {
+          await uploadToSupabase(shortsBucket, outputPath, mp4Buffer, 'video/mp4');
+          const url = getPublicUrl(shortsBucket, outputPath);
+          shortUrls.push(url);
+          console.log('Successfully uploaded short to Supabase:', url);
+        } catch (uploadError) {
+          console.error('Error uploading to Supabase:', uploadError);
+          throw new Error(`Failed to upload short to Supabase: ${uploadError.message}`);
+        }
       }
       job.shorts = shortUrls;
              job.status = 'completed';

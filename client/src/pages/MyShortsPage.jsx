@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import Navbar from '../components/Navbar';
@@ -11,7 +11,7 @@ import { ToastContainer } from 'react-toastify';
 
 const MyShortsPage = () => {
   const { isDarkMode } = useTheme();
-  const { user, loading } = useAuth();
+  const { user } = useAuth();
   const [shorts, setShorts] = useState([]);
   const [screenWidth, setScreenWidth] = useState(window.innerWidth);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(null);
@@ -25,15 +25,34 @@ const MyShortsPage = () => {
   }, []);
 
   useEffect(() => {
-    if (!user) {
-      setShorts([]);
-      return;
-    }
-    const shorts = JSON.parse(localStorage.getItem('myShorts') || '[]');
-    // Only show shorts for this user
-    const filtered = shorts.filter(s => s.userId === user.id);
-    filtered.sort((a, b) => b.createdAt - a.createdAt);
-    setShorts(filtered);
+    const fetchShorts = async () => {
+      if (!user) {
+        setShorts([]);
+        return;
+      }
+
+      try {
+        const { data, error } = await supabase
+          .from('shorts')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false });
+
+        if (error) {
+          console.error('Error fetching shorts:', error);
+          toast.error('Failed to load your shorts');
+          return;
+        }
+
+        console.log('Fetched shorts from Supabase:', data);
+        setShorts(data || []);
+      } catch (err) {
+        console.error('Error in fetchShorts:', err);
+        toast.error('Failed to load your shorts');
+      }
+    };
+
+    fetchShorts();
   }, [user]);
 
   // Click-away listener for dropdown
@@ -53,14 +72,27 @@ const MyShortsPage = () => {
     };
   }, [showOptions]);
 
-  const handleDelete = (jobId) => {
-    const updated = shorts.filter(s => s.jobId !== jobId);
-    setShorts(updated);
-    // Remove only this user's shorts from localStorage
-    const allShorts = JSON.parse(localStorage.getItem('myShorts') || '[]');
-    const newAll = allShorts.filter(s => !(s.jobId === jobId && s.userId === user.id));
-    localStorage.setItem('myShorts', JSON.stringify(newAll));
-    setShowDeleteConfirm(null);
+  const handleDelete = async (jobId) => {
+    try {
+      const { error } = await supabase
+        .from('shorts')
+        .delete()
+        .eq('job_id', jobId)
+        .eq('user_id', user.id);
+
+      if (error) {
+        console.error('Error deleting short:', error);
+        toast.error('Failed to delete short');
+        return;
+      }
+
+      setShorts(prev => prev.filter(s => s.job_id !== jobId));
+      setShowDeleteConfirm(null);
+      toast.success('Short deleted successfully');
+    } catch (err) {
+      console.error('Error in handleDelete:', err);
+      toast.error('Failed to delete short');
+    }
   };
 
   // Download all shorts with a small delay between each to ensure all are triggered
@@ -69,7 +101,7 @@ const MyShortsPage = () => {
     for (let i = 0; i < shorts.length; i++) {
       const short = shorts[i];
       const link = document.createElement('a');
-      link.href = `http://localhost:5000${short}`;
+      link.href = short.url;
       link.download = `short_${i + 1}.mp4`;
       document.body.appendChild(link);
       link.click();
@@ -110,7 +142,7 @@ const MyShortsPage = () => {
             }}>
               My Shorts
             </h1>
-        {shorts.length === 0 ? (
+            {shorts.length === 0 ? (
               <div style={{ 
                 color: isDarkMode ? '#bbb' : '#666', 
                 fontSize: 13, 
@@ -121,11 +153,11 @@ const MyShortsPage = () => {
                 borderRadius: 8,
                 border: isDarkMode ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(0,0,0,0.05)',
               }}>
-            You haven't generated any shorts yet.
-          </div>
-        ) : (
+                You haven't generated any shorts yet.
+              </div>
+            ) : (
               <MyShortsList
-                shorts={shorts}
+                myShorts={shorts}
                 isDarkMode={isDarkMode}
                 showOptions={showOptions}
                 setShowOptions={setShowOptions}
@@ -135,8 +167,8 @@ const MyShortsPage = () => {
                 handleDelete={handleDelete}
                 user={user}
               />
-        )}
-      </div>
+            )}
+          </div>
         </div>
       </div>
       {showDeleteConfirm && (

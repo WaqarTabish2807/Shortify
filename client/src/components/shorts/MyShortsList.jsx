@@ -24,8 +24,8 @@ const MyShortsList = ({ myShorts, isDarkMode, showOptions, setShowOptions, showD
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      {myShorts.map((item, idx) => (
-        <div key={item.jobId} style={{ 
+      {myShorts.map((item) => (
+        <div key={item.job_id} style={{ 
           background: isDarkMode ? '#23272f' : '#f9fafb', 
           borderRadius: 12, 
           padding: '24px', 
@@ -41,7 +41,7 @@ const MyShortsList = ({ myShorts, isDarkMode, showOptions, setShowOptions, showD
             gap: '8px',
           }}>
             <button
-              onClick={() => setShowOptions(showOptions === item.jobId ? null : item.jobId)}
+              onClick={() => setShowOptions(showOptions === item.job_id ? null : item.job_id)}
               style={{
                 background: isDarkMode ? '#2d2d2d' : '#eee',
                 color: isDarkMode ? '#fff' : '#666',
@@ -61,7 +61,7 @@ const MyShortsList = ({ myShorts, isDarkMode, showOptions, setShowOptions, showD
             >
               <FaEllipsisH size={12} />
             </button>
-            {showOptions === item.jobId && (
+            {showOptions === item.job_id && (
               <div ref={optionsRef} style={{
                 position: 'absolute',
                 top: '100%',
@@ -93,7 +93,7 @@ const MyShortsList = ({ myShorts, isDarkMode, showOptions, setShowOptions, showD
                   <FaDownload size={12} style={{ marginRight: 6 }} /> Download All
                 </button>
                 <button
-                  onClick={() => setShowDeleteConfirm(item.jobId)}
+                  onClick={() => setShowDeleteConfirm(item.job_id)}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -121,7 +121,7 @@ const MyShortsList = ({ myShorts, isDarkMode, showOptions, setShowOptions, showD
             gap: '6px',
           }}>
             <span style={{ color: isDarkMode ? '#888' : '#666' }}>Video:</span>
-            <span style={{ fontWeight: 400 }}>{item.videoName || `Video ${idx + 1}`}</span>
+            <span style={{ fontWeight: 400 }}>{item.video_name || `Video ${item.job_id}`}</span>
           </div>
           <div style={{ 
             color: isDarkMode ? '#aaa' : '#888', 
@@ -132,7 +132,7 @@ const MyShortsList = ({ myShorts, isDarkMode, showOptions, setShowOptions, showD
             gap: '6px',
           }}>
             <span style={{ color: isDarkMode ? '#888' : '#666' }}>Created:</span>
-            {new Date(item.createdAt).toLocaleString()}
+            {new Date(item.created_at).toLocaleString()}
           </div>
           <div style={{ 
             display: 'flex', 

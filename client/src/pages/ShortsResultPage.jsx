@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import Navbar from '../components/Navbar';
@@ -8,6 +8,10 @@ import ShortsResultHeader from '../components/shorts/ShortsResultHeader';
 import UpgradeBanner from '../components/shorts/UpgradeBanner';
 import ErrorMessage from '../components/shorts/ErrorMessage';
 import ShortsList from '../components/shorts/ShortsList';
+import { supabase } from '../supabase/client';
+import { toast } from 'react-toastify';
+import { ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 
 const ShortsResultPage = () => {
   const location = useLocation();
@@ -42,26 +46,81 @@ const ShortsResultPage = () => {
             clearInterval(interval);
           }
         } else {
-          setError('Could not fetch shorts.');
+          // Handle cases where the API returns success: false but no specific error message
+          setError(data.error || 'Could not fetch shorts status.');
+          clearInterval(interval);
         }
-      } catch {
-        setError('Could not fetch shorts.');
+      } catch (err) {
+        console.error('Error fetching job status:', err);
+        setError(`Could not fetch shorts status: ${err.message || 'Unknown error'}`);
+        clearInterval(interval);
       }
     };
+
     fetchStatus();
+    // Poll status every 3 seconds
     interval = setInterval(fetchStatus, 3000);
+
     return () => clearInterval(interval);
-  }, [jobId]);
+  }, [jobId]); // Depend on jobId
 
   useEffect(() => {
-    if (!user) return;
-    if (jobStatus?.shorts && jobStatus.shorts.length > 0 && jobId && videoId) {
-      const prev = JSON.parse(localStorage.getItem('myShorts') || '[]');
-      const filtered = prev.filter(s => s.jobId !== jobId || s.userId !== user.id);
-      filtered.push({ jobId, videoId, shorts: jobStatus.shorts, createdAt: Date.now(), userId: user.id });
-      localStorage.setItem('myShorts', JSON.stringify(filtered));
+    // This effect now specifically handles saving once the job is completed.
+    // It will first check if the shorts are already saved before attempting to insert.
+    if (user && jobStatus?.status === 'completed' && jobStatus.shorts && jobStatus.shorts.length > 0 && jobId && videoId) {
+      const saveShortsIfNotExists = async () => {
+        console.log(`Checking if shorts for job ID ${jobId} and user ${user.id} already exist...`);
+        try {
+          // Check if shorts for this job and user already exist
+          const { data: existingShorts, error: fetchError } = await supabase
+            .from('shorts')
+            .select('id')
+            .eq('job_id', jobId)
+            .eq('user_id', user.id);
+
+          if (fetchError) {
+            console.error('Error checking for existing shorts:', fetchError);
+            // If checking fails, we still attempt to save to be safe, error handling inside insert logic
+             attemptInsertShorts();
+          } else if (existingShorts && existingShorts.length > 0) {
+            console.log(`Shorts for job ID ${jobId} and user ${user.id} already exist. Skipping insert.`);
+          } else {
+            console.log('No existing shorts found. Proceeding with insert.');
+            // If no existing shorts found, proceed with insert
+             attemptInsertShorts();
+          }
+        } catch (err) {
+          console.error('Unexpected error during existing shorts check:', err);
+        }
+      };
+
+      const attemptInsertShorts = async () => {
+        console.log('Attempting to insert shorts into Supabase...');
+        try {
+          const { data, error: insertError } = await supabase
+            .from('shorts')
+            .insert({
+              job_id: jobId,
+              video_id: videoId,
+              shorts: jobStatus.shorts,
+              user_id: user.id,
+              created_at: new Date().toISOString(),
+              video_name: `Video ${jobId}` // You might want to get the actual video name from YouTube API
+            });
+
+          if (insertError) {
+            console.error('Supabase insert error details:', insertError);
+          } else {
+            console.log('Shorts saved successfully to Supabase.');
+          }
+        } catch (err) {
+          console.error('Unexpected error during shorts insert:', err);
+        }
+      };
+
+      saveShortsIfNotExists();
     }
-  }, [jobStatus?.shorts, jobId, videoId, user]);
+  }, [user, jobStatus, jobId, videoId]); // Depend on relevant state and props
 
   // Determine if user is free tier and show upgrade message
   const isFreeTier = user && user.tier !== 'paid';
@@ -109,6 +168,7 @@ const ShortsResultPage = () => {
           </div>
         </div>
       </div>
+      <ToastContainer />
     </div>
   );
 };
