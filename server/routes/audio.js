@@ -17,6 +17,8 @@ const {
   getPublicUrl,
   deleteFromSupabase,
 } = require('../supabaseUtils');
+const { Storage } = require('@google-cloud/storage');
+const storage = new Storage();
 
 // Initialize Supabase client
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
@@ -190,94 +192,107 @@ router.post('/process-video', async (req, res) => {
             }
         } catch (err) {
             console.warn('YouTube transcript not found, falling back to Google Speech-to-Text:', err.message);
-            // Fallback: Use Google Speech-to-Text with chunking (in-memory, no disk)
+            // Fallback: Use Google Speech-to-Text by sending the full audio buffer
+            // Fallback: Use Google Speech-to-Text with LongRunningRecognize via GCS
             try {
-                const speech = require('@google-cloud/speech');
+                const speech = require('@google-cloud/speech').v1;
                 const client = new speech.SpeechClient();
                 const { PassThrough } = require('stream');
                 
+                console.log('Starting full audio download for STT fallback...');
                 // 1. Download audio as stream from YouTube
                 const audioStream = ytdl(videoId, { filter: 'audioonly', quality: 'highestaudio' });
-                
-                // 2. Use ffmpeg to chunk audio into 60s segments, output as mp3 to memory
-                const chunkBuffers = [];
-                let currentBuffer = [];
-                let chunkIndex = 0;
-                let chunkPromises = [];
-                
-                // Helper to process a single chunk buffer with Google STT
-                async function processChunkBuffer(buffer) {
-                  const audioBytes = buffer.toString('base64');
-                    const audio = { content: audioBytes };
-                    const config = {
-                        encoding: 'MP3',
-                        sampleRateHertz: 44100,
-                        languageCode: userProvidedLanguageCode || 'en-US',
-                        enableWordTimeOffsets: true
-                    };
-                    const request = { audio, config };
-                    const [response] = await client.recognize(request);
-                  return response.results && response.results.length > 0
-                    ? response.results.map(result => ({
-                            text: result.alternatives[0].transcript,
-                            start: result.alternatives[0].words && result.alternatives[0].words[0] ? parseFloat(result.alternatives[0].words[0].startTime.seconds || 0) : 0,
-                        duration: result.alternatives[0].words && result.alternatives[0].words.length > 1
-                          ? parseFloat(result.alternatives[0].words[result.alternatives[0].words.length - 1].endTime.seconds || 0) - parseFloat(result.alternatives[0].words[0].startTime.seconds || 0)
-                          : 0
-                      }))
-                    : [];
-                }
 
-                // 3. Set up ffmpeg to segment audio
-                await new Promise((resolve, reject) => {
-                  const ffmpegCommand = ffmpeg(audioStream)
-                    .audioCodec('libmp3lame')
-                    .format('mp3')
-                    .outputOptions('-f segment', '-segment_time 60', '-c copy')
-                    .on('start', () => {
-                      chunkIndex = 0;
-                    })
-                    .on('error', err => reject(err));
-
-                  // ffmpeg emits 'data' for each chunk
-                  ffmpegCommand.pipe()
-                    .on('data', chunk => {
-                      currentBuffer.push(chunk);
-                    })
-                    .on('end', async () => {
-                      // Last chunk
-                      if (currentBuffer.length > 0) {
-                        chunkBuffers.push(Buffer.concat(currentBuffer));
-                        currentBuffer = [];
-                      }
-                      resolve();
-                    })
-                    .on('close', () => {
-                      if (currentBuffer.length > 0) {
-                        chunkBuffers.push(Buffer.concat(currentBuffer));
-                        currentBuffer = [];
-                      }
-                      resolve();
+                // Capture the full audio stream into a buffer
+                const audioBuffer = await new Promise((resolve, reject) => {
+                    const chunks = [];
+                    audioStream.on('data', chunk => chunks.push(chunk));
+                    audioStream.on('end', () => {
+                        console.log('Full audio download complete.');
+                        resolve(Buffer.concat(chunks));
+                    });
+                    audioStream.on('error', (dlErr) => {
+                        console.error('Error during YTDL audio download for STT fallback:', dlErr);
+                        reject(new Error(`Audio download failed for STT: ${dlErr.message}`));
                     });
                 });
 
-                // 4. Process each chunk buffer with Google STT
+                console.log(`Downloaded audio buffer size: ${audioBuffer.length}. Uploading to GCS...`);
+
+                // 2. Upload audio buffer to Google Cloud Storage
+                const bucketName = 'shortify0-audio-uploads'; // Your GCS bucket name
+                const gcsFileName = `audio-${jobId}.webm`; // Use a unique filename
+                const gcsFile = storage.bucket(bucketName).file(gcsFileName);
+
+                await new Promise((resolve, reject) => {
+                    const uploadStream = gcsFile.createWriteStream({
+                        metadata: {
+                            contentType: 'audio/webm', // Assuming audio format from ytdl filter
+                        },
+                    });
+                    uploadStream.on('error', (uploadErr) => {
+                        console.error('Error uploading audio to GCS:', uploadErr);
+                        reject(new Error(`GCS upload failed: ${uploadErr.message}`));
+                    });
+                    uploadStream.on('finish', () => {
+                        console.log(`Audio uploaded to GCS: gs://${bucketName}/${gcsFileName}`);
+                        resolve();
+                    });
+                    uploadStream.end(audioBuffer);
+                });
+
+                // 3. Call LongRunningRecognize with GCS URI
+                const gcsUri = `gs://${bucketName}/${gcsFileName}`;
+                const audio = { uri: gcsUri };
+                const config = {
+                    encoding: 'AUDIO_ENCODING_UNSPECIFIED', // Let Google auto-detect
+                    languageCode: userProvidedLanguageCode || 'en-US',
+                    enableWordTimeOffsets: true,
+                    audioChannelCount: 2, // Explicitly set channel count to 2 based on error
+                };
+                const request = { audio, config };
+
+                console.log(`Starting LongRunningRecognize for GCS URI: ${gcsUri}`);
+                const [operation] = await client.longRunningRecognize(request);
+
+                console.log('LongRunningRecognize operation started. Polling for result...');
+                // 4. Poll for the operation result
+                const [response] = await operation.promise();
+
+                console.log('LongRunningRecognize operation complete.');
+                // Extract and format the transcript
                 let allTranscripts = [];
-                for (const buffer of chunkBuffers) {
-                  const chunkTranscript = await processChunkBuffer(buffer);
-                  allTranscripts.push(...chunkTranscript);
+                if (response.results && response.results.length > 0) {
+                  allTranscripts = response.results.map(result => ({
+                          text: result.alternatives[0].transcript,
+                          start: result.alternatives[0].words && result.alternatives[0].words[0] ? parseFloat(result.alternatives[0].words[0].startTime.seconds || 0) : 0,
+                      duration: result.alternatives[0].words && result.alternatives[0].words.length > 1
+                        ? parseFloat(result.alternatives[0].words[result.alternatives[0].words.length - 1].endTime.seconds || 0) - parseFloat(result.alternatives[0].words[0].startTime.seconds || 0)
+                        : 0
+                  }));
                 }
+
+                // Optional: Clean up the uploaded audio file from GCS after successful transcription
+                try {
+                    await gcsFile.delete();
+                    console.log(`Deleted temporary GCS file: ${gcsFileName}`);
+                } catch (deleteErr) {
+                    console.warn(`Failed to delete temporary GCS file ${gcsFileName}:`, deleteErr);
+                    // Continue without throwing, as transcription was successful
+                }
+                
                 const job = activeJobs.get(jobId);
                 if (job) {
                   job.transcript = allTranscripts;
                 }
                 return { transcript: allTranscripts };
             } catch (sttErr) {
-                console.error('Google Speech-to-Text error:', sttErr);
+                console.error('Google Speech-to-Text fallback error:', sttErr);
                 const job = activeJobs.get(jobId);
                 if (job) {
-                  job.error = job.error ? `${job.error}, Transcript Error: ${sttErr.message}` : `Transcript Error: ${sttErr.message}`;
+                  job.error = job.error ? `${job.error}, STT Fallback Error: ${sttErr.message}` : `STT Fallback Error: ${sttErr.message}`;
                 }
+                // Re-throw to be caught by the main transcriptPromise catch block
                 throw sttErr;
             }
         }

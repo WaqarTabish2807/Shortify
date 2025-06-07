@@ -1,8 +1,10 @@
 import React, { useRef } from 'react';
 import ShortsVideoCard from './ShortsVideoCard';
 import { FaEllipsisH, FaTrash, FaDownload } from 'react-icons/fa';
+import { toast } from 'react-toastify';
+import { supabase } from '../../supabase/client';
 
-const MyShortsList = ({ myShorts, isDarkMode, showOptions, setShowOptions, showDeleteConfirm, setShowDeleteConfirm, handleDownloadAll, handleDelete, user }) => {
+const MyShortsList = ({ myShorts, isDarkMode, showOptions, setShowOptions, showDeleteConfirm, setShowDeleteConfirm, handleDownloadAll, setShorts, user }) => {
   const optionsRef = useRef(null);
 
   // Click-away listener for dropdown
@@ -21,6 +23,38 @@ const MyShortsList = ({ myShorts, isDarkMode, showOptions, setShowOptions, showD
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [showOptions, setShowOptions]);
+
+  const handleDelete = async (jobId) => {
+    try {
+      // Delete from Supabase first
+      console.log(`Attempting to delete short with job ID: ${jobId} for user ${user?.id} from Supabase`);
+      console.log('Current user object:', user);
+      console.log('Supabase client auth state:', supabase.auth.currentUser);
+
+      const { error: deleteError } = await supabase
+        .from('shorts')
+        .delete()
+        .eq('job_id', jobId)
+        .eq('user_id', user.id); // Ensure we only delete the user's shorts
+
+      if (deleteError) {
+        console.error('Error deleting short from Supabase:', deleteError);
+        toast.error(`Failed to delete short: ${deleteError.message || 'Unknown error'}`);
+        // If Supabase deletion fails, we might not want to remove it from the frontend
+        return;
+      }
+
+      console.log(`Successfully deleted short with job ID: ${jobId} from Supabase.`);
+
+      // If Supabase deletion is successful, update frontend state
+      setShorts(prev => prev.filter(s => s.job_id !== jobId));
+      setShowDeleteConfirm(null);
+      toast.success('Short deleted successfully');
+    } catch (err) {
+      console.error('Error in handleDelete:', err);
+      toast.error(`Failed to delete short: ${err.message || 'Unknown error'}`);
+    }
+  };
 
   return (
     <div style={{
