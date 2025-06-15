@@ -13,8 +13,6 @@ import ClipLengthSelector from '../components/newDashboard/ClipLengthSelector';
 import LayoutSelector from '../components/newDashboard/LayoutSelector';
 import AdvancedOptions from '../components/newDashboard/AdvancedOptions';
 import TemplateSelector from '../components/newDashboard/TemplateSelector';
-import GenerateButton from '../components/newDashboard/GenerateButton';
-import { FaSpinner } from 'react-icons/fa';
 
 const NewDashboard = () => {
   const { isDarkMode } = useTheme();
@@ -35,7 +33,6 @@ const NewDashboard = () => {
   });
   const [layout, setLayout] = useState('auto');
   const [isProcessing, setIsProcessing] = useState(false);
-  const [isButtonDisabled, setIsButtonDisabled] = useState(false);
   const navigate = useNavigate();
   const inputRef = React.useRef(null);
   const [languageLoading, setLanguageLoading] = useState(false);
@@ -69,7 +66,6 @@ const NewDashboard = () => {
     }
 
     setIsProcessing(true);
-    setIsButtonDisabled(true);
     try {
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
       if (sessionError) throw sessionError;
@@ -118,7 +114,6 @@ const NewDashboard = () => {
       navigate('/dashboard');
     } finally {
       setIsProcessing(false);
-      setIsButtonDisabled(false);
     }
   }, [videoFile, clipLength, layout, selectedTemplate, languageCode, navigate, pollJobStatus]);
 
@@ -134,31 +129,6 @@ const NewDashboard = () => {
     if (!videoDuration) return userTier === 'paid' ? 600 : 300;
     return Math.min(videoDuration, userTier === 'paid' ? 600 : 300);
   }, [videoDuration, userTier]);
-
-  // Auto-detect language
-  const autoDetectLanguage = useCallback(async (videoId) => {
-    try {
-      const response = await fetch(`${process.env.REACT_APP_API_URL}/api/detect-language`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ videoId })
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to detect language');
-      }
-
-      const data = await response.json();
-      return data.languageCode;
-    } catch (err) {
-      console.error('Language detection error:', err);
-      toast.error(`Could not auto-detect language: ${err.message}`);
-      return 'en-US'; // Default to English on error
-    }
-  }, []);
 
   // Handle file change
   const handleFileChange = useCallback(async (e) => {
