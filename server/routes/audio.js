@@ -1,11 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const path = require('path');
-const fsPromises = require('fs').promises;
-const { createWriteStream } = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const { GoogleGenerativeAI } = require("@google/generative-ai");
-const fs = require('fs');
 const { createClient } = require('@supabase/supabase-js');
 const {
   uploadToSupabase,
@@ -17,6 +14,7 @@ const multer = require('multer');
 const ffmpeg = require('fluent-ffmpeg');
 const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg');
 const { Storage } = require('@google-cloud/storage');
+const { Readable } = require('stream');
 
 // Initialize Supabase client
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
@@ -41,42 +39,34 @@ const upload = multer({ storage: multer.memoryStorage() });
 // Function to extract audio from video buffer
 async function extractAudioFromVideo(videoBuffer) {
   return new Promise((resolve, reject) => {
-    const tempVideoPath = path.join(__dirname, '..', 'temp', `${uuidv4()}.mp4`);
-    const tempAudioPath = path.join(__dirname, '..', 'temp', `${uuidv4()}.mp3`);
+    const videoStream = Readable.from(videoBuffer);
+    const audioChunks = [];
 
-    // Write video buffer to temporary file
-    fsPromises.writeFile(tempVideoPath, videoBuffer)
-      .then(() => {
-        ffmpeg(tempVideoPath)
-          .toFormat('mp3')
-          .on('end', async () => {
-            try {
-              // Read the audio file
-              const audioBuffer = await fsPromises.readFile(tempAudioPath);
-              
-              // Clean up temporary files
-              await Promise.all([
-                fsPromises.unlink(tempVideoPath),
-                fsPromises.unlink(tempAudioPath)
-              ]);
-              
-              resolve(audioBuffer);
-            } catch (error) {
-              reject(error);
-            }
-          })
-          .on('error', (err) => {
-            // Clean up temporary files on error
-            Promise.all([
-              fsPromises.unlink(tempVideoPath).catch(() => {}),
-              fsPromises.unlink(tempAudioPath).catch(() => {})
-            ]).finally(() => {
-              reject(err);
-            });
-          })
-          .save(tempAudioPath);
+    ffmpeg(videoStream)
+      .toFormat('mp3')
+      .on('start', (commandLine) => {
+        console.log('FFmpeg started with command:', commandLine);
       })
-      .catch(reject);
+      .on('progress', (progress) => {
+        console.log('FFmpeg progress:', progress);
+      })
+      .on('error', (err) => {
+        console.error('FFmpeg error:', err);
+        reject(err);
+      })
+      .pipe()
+      .on('data', (chunk) => {
+        audioChunks.push(chunk);
+      })
+      .on('end', () => {
+        console.log('Audio extraction completed');
+        const audioBuffer = Buffer.concat(audioChunks);
+        resolve(audioBuffer);
+      })
+      .on('error', (err) => {
+        console.error('Stream error:', err);
+        reject(err);
+      });
   });
 }
 
@@ -89,15 +79,20 @@ router.post('/process-video', upload.single('video'), async (req, res) => {
   try {
     // Extract audio from video
     console.log('🎵 Extracting audio from video...');
+    console.log('Video buffer size:', req.file.buffer.length);
+    
     const audioBuffer = await extractAudioFromVideo(req.file.buffer);
+    console.log('Audio extraction successful, buffer size:', audioBuffer.length);
 
     // Upload audio to Supabase
     console.log('📤 Uploading audio to Supabase...');
     const audioPath = `audio/${uuidv4()}.mp3`;
     await uploadToSupabase('shorts', audioPath, audioBuffer, 'audio/mpeg');
+    console.log('Audio upload successful');
 
     // Get public URL for the audio
     const audioUrl = await getPublicUrl('shorts', audioPath);
+    console.log('Audio URL generated:', audioUrl);
 
     res.json({
       success: true,
@@ -105,7 +100,11 @@ router.post('/process-video', upload.single('video'), async (req, res) => {
     });
   } catch (error) {
     console.error('Error processing video:', error);
-    res.status(500).json({ error: 'Failed to process video' });
+    console.error('Error stack:', error.stack);
+    res.status(500).json({ 
+      error: 'Failed to process video',
+      details: error.message 
+    });
   }
 });
 
