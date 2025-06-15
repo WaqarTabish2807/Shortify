@@ -30,7 +30,8 @@ const ProcessingPage = () => {
 
     const checkStatus = async () => {
       try {
-        const response = await fetch(`${process.env.REACT_APP_API_URL}/api/job-status/${jobId}`);
+        const apiUrl = process.env.REACT_APP_API_URL?.replace(/\/$/, '');
+        const response = await fetch(`${apiUrl}/api/job-status/${jobId}`);
         const data = await response.json();
         if (data.success) {
           setJobStatus(data);
