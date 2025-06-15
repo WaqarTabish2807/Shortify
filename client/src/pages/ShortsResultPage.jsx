@@ -33,7 +33,7 @@ const ShortsResultPage = () => {
   useEffect(() => {
     const fetchJobStatus = async () => {
       try {
-        const response = await fetch(`http://localhost:5000/api/job-status/${location.state?.jobId}`);
+        const response = await fetch(`${process.env.REACT_APP_API_URL}/api/job-status/${location.state?.jobId}`);
         const responseData = await response.json();
         
         if (!response.ok) {

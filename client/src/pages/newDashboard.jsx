@@ -46,7 +46,7 @@ const NewDashboard = () => {
   // After submitting the video for processing, poll the /api/job-status/:jobId endpoint to get the video duration.
   const pollJobStatus = useCallback(async (jobId) => {
     try {
-      const response = await fetch(`http://localhost:5000/api/job-status/${jobId}`);
+      const response = await fetch(`${process.env.REACT_APP_API_URL}/api/job-status/${jobId}`);
       const data = await response.json();
       if (data && data.duration) {
         setVideoDuration(data.duration);
@@ -87,7 +87,7 @@ const NewDashboard = () => {
       // Navigate to processing page immediately
       navigate('/processing', { state: { pendingUpload: true } });
 
-      const response = await fetch('http://localhost:5000/api/process-video', {
+      const response = await fetch(`${process.env.REACT_APP_API_URL}/api/process-video`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${session.access_token}`
@@ -138,7 +138,7 @@ const NewDashboard = () => {
   // Auto-detect language
   const autoDetectLanguage = useCallback(async (videoId) => {
     try {
-      const response = await fetch('http://localhost:5000/api/detect-language', {
+      const response = await fetch(`${process.env.REACT_APP_API_URL}/api/detect-language`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
