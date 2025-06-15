@@ -19,7 +19,6 @@ const ShortsResultPage = () => {
   const location = useLocation();
   const [jobStatus, setJobStatus] = useState(null);
   const [error, setError] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
   const [pollingInterval, setPollingInterval] = useState(null);
 
   // On mount, if no state is present, redirect to dashboard
@@ -33,7 +32,7 @@ const ShortsResultPage = () => {
   useEffect(() => {
     const fetchJobStatus = async () => {
       try {
-        const response = await fetch(`http://localhost:5000/api/job-status/${location.state?.jobId}`);
+        const response = await fetch(`${process.env.REACT_APP_API_URL}/api/job-status/${location.state?.jobId}`);
         const responseData = await response.json();
         
         if (!response.ok) {
@@ -44,12 +43,10 @@ const ShortsResultPage = () => {
         
         if (responseData.status === 'completed' || responseData.status === 'error') {
           clearInterval(pollingInterval);
-          setIsLoading(false);
         }
       } catch (err) {
         setError(err.message);
         clearInterval(pollingInterval);
-        setIsLoading(false);
       }
     };
 
@@ -64,7 +61,7 @@ const ShortsResultPage = () => {
         clearInterval(pollingInterval);
       }
     };
-  }, [location.state?.jobId]);
+  }, [location.state?.jobId, pollingInterval]);
 
   useEffect(() => {
     // This effect now specifically handles saving once the job is completed.
@@ -74,7 +71,7 @@ const ShortsResultPage = () => {
         console.log(`Checking if shorts for job ID ${location.state.jobId} and user ${user.id} already exist...`);
         try {
           // Check if shorts for this job and user already exist
-          const { data: existingShorts, error: fetchError } = await supabase
+          const { error: fetchError } = await supabase
             .from('shorts')
             .select('id')
             .eq('job_id', location.state.jobId)
@@ -84,8 +81,6 @@ const ShortsResultPage = () => {
             console.error('Error checking for existing shorts:', fetchError);
             // If checking fails, we still attempt to save to be safe, error handling inside insert logic
              attemptInsertShorts();
-          } else if (existingShorts && existingShorts.length > 0) {
-            console.log(`Shorts for job ID ${location.state.jobId} and user ${user.id} already exist. Skipping insert.`);
           } else {
             console.log('No existing shorts found. Proceeding with insert.');
             // If no existing shorts found, proceed with insert
@@ -99,7 +94,7 @@ const ShortsResultPage = () => {
       const attemptInsertShorts = async () => {
         console.log('Attempting to insert shorts into Supabase...');
         try {
-          const { data, error: insertError } = await supabase
+          const { error: insertError } = await supabase
             .from('shorts')
             .insert({
               job_id: location.state.jobId,
@@ -122,12 +117,12 @@ const ShortsResultPage = () => {
 
       saveShortsIfNotExists();
     }
-  }, [user, jobStatus, location.state.jobId]); // Depend on relevant state and props
+  }, [user, jobStatus, location.state.jobId]);
 
   useEffect(() => {
     const fetchShorts = async () => {
       try {
-        const { data: shorts, error } = await supabase
+        const { error } = await supabase
           .from('shorts')
           .select('*')
           .eq('user_id', user.id)
