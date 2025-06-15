@@ -1,22 +1,20 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import Navbar from "../components/Navbar";
 import Sidebar from "../components/Sidebar";
 import { useTheme } from "../context/ThemeContext";
 import { useAuth } from "../context/AuthContext";
 import { useNavigate } from "react-router-dom";
-import Select from 'react-select';
 import { supabase } from "../supabase/client";
 import { FaSpinner } from 'react-icons/fa';
 import { toast } from 'react-toastify';
-import languageOptions from '../data/languageOptions';
 
 const Dashboard = () => {
   const { isDarkMode } = useTheme();
   const { user } = useAuth();
   const [screenWidth, setScreenWidth] = useState(window.innerWidth);
-  const [videoId, setVideoId] = useState('');
+  const [videoFile, setVideoFile] = useState(null);
+  const [videoUrl, setVideoUrl] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
-  const [languageCode, setLanguageCode] = useState('en-US');
   const [isButtonDisabled, setIsButtonDisabled] = useState(false);
   const navigate = useNavigate();
 
@@ -28,8 +26,33 @@ const Dashboard = () => {
 
   const isMobile = screenWidth < 768;
 
-  const handleSubmit = async (e) => {
+  const handleFileChange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith('video/')) {
+      toast.error('Please upload a valid video file.');
+      return;
+    }
+
+    // Validate file size (100MB limit)
+    if (file.size > 100 * 1024 * 1024) {
+      toast.error('Video file size must be less than 100MB.');
+      return;
+    }
+
+    setVideoFile(file);
+    setVideoUrl(URL.createObjectURL(file));
+  };
+
+  const handleSubmit = useCallback(async (e) => {
     e.preventDefault();
+    if (!videoFile) {
+      toast.error('Please upload a video file first.');
+      return;
+    }
+
     setIsProcessing(true);
     setIsButtonDisabled(true);
     try {
@@ -38,14 +61,18 @@ const Dashboard = () => {
       if (!session?.access_token) {
         throw new Error('No active session found');
       }
+
+      const formData = new FormData();
+      formData.append('video', videoFile);
+
       const response = await fetch('http://localhost:5000/api/process-video', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
           'Authorization': `Bearer ${session.access_token}`
         },
-        body: JSON.stringify({ videoId })
+        body: formData
       });
+
       const data = await response.json();
       if (!response.ok) {
         if (response.status === 403) {
@@ -56,16 +83,17 @@ const Dashboard = () => {
         }
         return;
       }
-      // Navigate to ProcessingPage
+
       if (data && data.jobId) {
-        navigate('/processing', { state: { jobId: data.jobId, videoId } });
+        navigate('/processing', { state: { jobId: data.jobId } });
       }
     } catch (err) {
       toast.error(err.message);
     } finally {
       setIsProcessing(false);
+      setIsButtonDisabled(false);
     }
-  };
+  }, [videoFile, navigate]);
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', fontFamily: 'Inter, sans-serif', background: isDarkMode ? '#121212' : '#fafbfc', flexDirection: isMobile ? 'column' : 'row' }}>
@@ -86,160 +114,128 @@ const Dashboard = () => {
             color: isDarkMode ? '#fff' : '#000',
             overflow: 'visible',
           }}>
-            <div style={{ fontWeight: 700, fontSize: isMobile ? 18 : 22, marginBottom: isMobile ? 16 : 8 }}>Create YouTube Shorts</div>
-            <div style={{ color: isDarkMode ? '#888' : '#888', fontSize: isMobile ? 14 : 15, marginBottom: isMobile ? 20 : 24 }}>Transform your YouTube videos into engaging shorts</div>
-            <div style={{ textAlign: 'left', fontWeight: 500, fontSize: isMobile ? 13 : 14, marginBottom: isMobile ? 4 : 6 }}>YouTube Video URL</div>
-            <div style={{ width: '100%' }}>
+            <div style={{ fontWeight: 700, fontSize: isMobile ? 18 : 22, marginBottom: isMobile ? 16 : 8 }}>Create Shorts</div>
+            <div style={{ color: isDarkMode ? '#888' : '#888', fontSize: isMobile ? 14 : 15, marginBottom: isMobile ? 20 : 24 }}>Transform your videos into engaging shorts</div>
+            
+            {/* Video Upload */}
+            <div style={{ textAlign: 'left', fontWeight: 500, fontSize: isMobile ? 13 : 14, marginBottom: isMobile ? 4 : 6 }}>Upload Video</div>
+            <div style={{
+              width: '100%',
+              border: `1.5px dashed ${isDarkMode ? '#333' : '#e0e0e0'}`,
+              borderRadius: 10,
+              padding: '20px',
+              fontSize: 14,
+              outline: 'none',
+              background: isDarkMode ? '#18192a' : '#fafbfc',
+              color: isDarkMode ? '#f3f4f6' : '#000',
+              marginBottom: 10,
+              boxSizing: 'border-box',
+              textAlign: 'center',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '12px',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease',
+              ':hover': {
+                borderColor: isDarkMode ? '#444' : '#ccc',
+              }
+            }}>
               <input
-                type="text"
-                placeholder="Paste your YouTube video URL !"
-                value={videoId}
-                onChange={e => setVideoId(e.target.value)}
-                style={{
-                  width: '100%',
-                  border: `1px solid ${isDarkMode ? '#333' : '#e0e0e0'}`,
-                  borderRadius: 6,
-                  padding: '10px 12px',
-                  fontSize: 15,
-                  outline: 'none',
-                  background: isDarkMode ? '#2a2a2a' : '#fafbfc',
-                  color: isDarkMode ? '#fff' : '#000',
-                  marginBottom: 10,
-                  boxSizing: 'border-box'
-                }}
+                type="file"
+                accept="video/*"
+                onChange={handleFileChange}
+                style={{ display: 'none' }}
+                id="video-upload"
               />
-              <div
+              <label
+                htmlFor="video-upload"
                 style={{
+                  cursor: 'pointer',
                   display: 'flex',
-                  gap: 8,
-                  width: '100%',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: '8px',
+                  width: '100%'
                 }}
               >
-                <Select
-                  value={languageOptions.find(opt => opt.code === languageCode)}
-                  onChange={opt => setLanguageCode(opt.code)}
-                  options={languageOptions}
-                  menuPlacement="auto"
-                  styles={{
-                    control: (base, state) => ({
-                      ...base,
-                      background: isDarkMode ? '#23272f' : '#fff',
-                      borderColor: state.isFocused ? '#2563eb' : (isDarkMode ? '#333' : '#e0e0e0'),
-                      color: isDarkMode ? '#fff' : '#222',
-                      borderRadius: 8,
-                      minHeight: 44,
-                      boxShadow: state.isFocused ? '0 0 0 2px #2563eb33' : '0 2px 8px rgba(0,0,0,0.04)',
-                      fontWeight: 500,
-                      fontSize: 15,
-                      transition: 'border 0.2s, box-shadow 0.2s',
-                      outline: 'none',
-                      '&:hover': {
-                        borderColor: '#2563eb'
-                      }
-                    }),
-                    menu: base => ({
-                      ...base,
-                      background: isDarkMode ? '#23272f' : '#fff',
-                      color: isDarkMode ? '#fff' : '#222',
-                      borderRadius: 10,
-                      boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
-                      zIndex: 9999,
-                      border: isDarkMode ? '1px solid #333' : '1px solid #e0e0e0',
-                      marginTop: 4,
-                      minWidth: 140,
-                      overflowX: 'hidden',
-                      padding: 0,
-                    }),
-                    option: (base, state) => ({
-                      ...base,
-                      background: state.isSelected
-                        ? (isDarkMode ? '#353b4a' : '#e3e8f7')
-                        : state.isFocused
-                        ? (isDarkMode ? '#23272f' : '#f3f4f6')
-                        : isDarkMode
-                        ? '#23272f'
-                        : '#fff',
-                      color: isDarkMode ? '#fff' : '#222',
-                      fontWeight: state.isSelected ? 600 : 500,
-                      cursor: 'pointer',
-                      borderRadius: 6,
-                      margin: '2px 6px',
-                      padding: '10px 14px',
-                      fontSize: 15,
-                      transition: 'background 0.2s, color 0.2s',
-                      overflowX: 'hidden',
-                    }),
-                    menuList: base => ({
-                      ...base,
-                      maxHeight: 160,
-                      paddingRight: 0,
-                      scrollbarWidth: 'thin',
-                      overflowX: 'hidden',
-                      '&::-webkit-scrollbar': {
-                        width: 6,
-                        background: 'transparent'
-                      },
-                      '&::-webkit-scrollbar-thumb': {
-                        background: '#e0e0e0',
-                        borderRadius: 4
-                      }
-                    }),
-                    singleValue: base => ({
-                      ...base,
-                      color: isDarkMode ? '#fff' : '#222',
-                      fontWeight: 600,
-                    }),
-                    dropdownIndicator: base => ({
-                      ...base,
-                      color: isDarkMode ? '#fff' : '#222',
-                      '&:hover': { color: '#2563eb' }
-                    }),
-                    indicatorSeparator: base => ({
-                      ...base,
-                      background: isDarkMode ? '#444' : '#e0e0e0',
-                    }),
-                    input: base => ({
-                      ...base,
-                      color: isDarkMode ? '#fff' : '#222',
-                    }),
-                    placeholder: base => ({
-                      ...base,
-                      color: isDarkMode ? '#aaa' : '#888',
-                      fontWeight: 400,
-                    }),
-                  }}
-                  isSearchable
-                />
-                <button
-                  disabled={isProcessing || isButtonDisabled}
-                  style={{
-                    flex: 1,
-                    background: isDarkMode ? 'white' : '#111',
-                    color: isDarkMode ? '#111' : 'white',
-                    border: 'none',
-                    borderRadius: 6,
-                    fontWeight: 600,
-                    fontSize: 15,
-                    cursor: 'pointer',
-                    height: 44,
-                    boxSizing: 'border-box',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center'
-                  }}
-                  onClick={handleSubmit}
-                >
-                  {isProcessing ? (
-                    <>
-                      <FaSpinner className="animate-spin -ml-1 mr-2 h-4 w-4" style={{ marginRight: 8 }} />
-                      Processing...
-                    </>
-                  ) : (
-                    'Generate Shorts'
-                  )}
-                </button>
-              </div>
+                {videoFile ? (
+                  <>
+                    <div style={{ fontWeight: 600, color: isDarkMode ? '#e0e7ef' : '#222' }}>
+                      {videoFile.name}
+                    </div>
+                    <div style={{ fontSize: 12, color: isDarkMode ? '#888' : '#666' }}>
+                      {(videoFile.size / (1024 * 1024)).toFixed(1)}MB
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div style={{ fontSize: 16, color: isDarkMode ? '#e0e7ef' : '#222' }}>
+                      Click to upload video
+                    </div>
+                    <div style={{ fontSize: 12, color: isDarkMode ? '#888' : '#666' }}>
+                      MP4, MOV, or AVI (max 100MB)
+                    </div>
+                  </>
+                )}
+              </label>
             </div>
+
+            {/* Video Preview */}
+            {videoFile && (
+              <div style={{ 
+                margin: '0 0 12px 0', 
+                borderRadius: 12, 
+                overflow: 'hidden', 
+                boxShadow: isDarkMode ? '0 2px 8px #23272f33' : '0 2px 8px #e0e7ef33', 
+                width: '100%', 
+                height: isMobile ? 120 : 160, 
+                minHeight: 100, 
+                maxHeight: 180 
+              }}>
+                <video
+                  src={videoUrl}
+                  controls
+                  style={{ 
+                    width: '100%', 
+                    height: '100%', 
+                    objectFit: 'cover',
+                    background: '#000'
+                  }}
+                />
+              </div>
+            )}
+
+            {/* Process Button */}
+            <button
+              onClick={handleSubmit}
+              disabled={isButtonDisabled || !videoFile}
+              style={{
+                width: '100%',
+                padding: '12px',
+                background: isButtonDisabled || !videoFile ? (isDarkMode ? '#333' : '#e0e0e0') : '#2563eb',
+                color: isButtonDisabled || !videoFile ? (isDarkMode ? '#666' : '#999') : '#fff',
+                border: 'none',
+                borderRadius: 8,
+                fontSize: 15,
+                fontWeight: 600,
+                cursor: isButtonDisabled || !videoFile ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                transition: 'all 0.2s ease'
+              }}
+            >
+              {isProcessing ? (
+                <>
+                  <FaSpinner className="spin" />
+                  Processing...
+                </>
+              ) : (
+                'Process Video'
+              )}
+            </button>
           </div>
         </div>
       </div>

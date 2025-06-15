@@ -14,12 +14,17 @@ const ProcessingPage = () => {
   const navigate = useNavigate();
   const [jobStatus, setJobStatus] = useState(null);
   const [error, setError] = useState(null);
-  const { jobId, videoId } = location.state || {};
+  const { jobId, pendingUpload } = location.state || {};
   const maxProgress = useRef(0);
 
   useEffect(() => {
-    if (!jobId || !videoId) {
+    if (!jobId && !pendingUpload) {
       navigate('/dashboard');
+      return;
+    }
+
+    if (pendingUpload) {
+      setJobStatus({ status: 'initializing' });
       return;
     }
 
@@ -29,10 +34,12 @@ const ProcessingPage = () => {
         const data = await response.json();
         if (data.success) {
           setJobStatus(data);
-          if (data.status === 'completed' || data.status === 'error') {
+          if (data.status === 'completed') {
             setTimeout(() => {
-              navigate('/shorts-result', { state: { jobId, videoId } });
+              navigate('/shorts-result', { state: { jobId } });
             }, 3000);
+          } else if (data.status === 'error') {
+            setError(data.error || 'An error occurred during processing');
           }
           const progress = data.downloadProgress ?? 0;
           if (progress > maxProgress.current) maxProgress.current = progress;
@@ -45,11 +52,45 @@ const ProcessingPage = () => {
     checkStatus();
     const interval = setInterval(checkStatus, 3000);
     return () => clearInterval(interval);
-  }, [jobId, videoId, navigate]);
+  }, [jobId, pendingUpload, navigate]);
 
   const progress = jobStatus?.downloadProgress ?? 0;
   if (progress > maxProgress.current) maxProgress.current = progress;
   const displayProgress = maxProgress.current;
+
+  const getStepColor = (step) => {
+    if (!jobStatus) return gray;
+    
+    const status = jobStatus.status;
+    if (status === 'error') return red;
+    
+    switch (step) {
+      case 'initializing':
+        return status === 'initializing' ? blue : green;
+      case 'uploading':
+        return status === 'initializing' ? gray : 
+               status === 'processing' || status === 'downloaded' || status === 'cutting' || status === 'completed' ? green : blue;
+      case 'analyzing':
+        return status === 'initializing' || status === 'processing' ? gray :
+               status === 'downloaded' || status === 'cutting' || status === 'completed' ? green : blue;
+      case 'creating':
+        return status === 'initializing' || status === 'processing' || status === 'downloaded' ? gray :
+               status === 'cutting' || status === 'completed' ? green : blue;
+      default:
+        return gray;
+    }
+  };
+
+  const getStepIcon = (step) => {
+    const color = getStepColor(step);
+    return color === green ? (
+      <CheckCircle2 style={{ width: 20, height: 20 }} />
+    ) : color === blue ? (
+      <Loader2 className="processing-spin" style={{ width: 20, height: 20 }} />
+    ) : (
+      <CheckCircle2 style={{ width: 20, height: 20, opacity: 0.3 }} />
+    );
+  };
 
   return (
     <div style={{
@@ -137,20 +178,13 @@ const ProcessingPage = () => {
             gap: 10,
             fontSize: '1.08rem',
             marginBottom: 10,
-            color:
-              jobStatus?.status === 'downloaded' ||
-              jobStatus?.status === 'cutting' ||
-              jobStatus?.status === 'completed'
-                ? green
-                : jobStatus?.status === 'processing'
-                ? blue
-                : gray,
+            color: getStepColor('initializing'),
             fontWeight: 600,
           }}>
             <span style={{ display: 'inline-flex', alignItems: 'center' }}>
-              <CheckCircle2 style={{ width: 20, height: 20 }} />
+              {getStepIcon('initializing')}
             </span>
-            Downloading video
+            Initializing process
           </div>
           <div style={{
             display: 'flex',
@@ -158,17 +192,25 @@ const ProcessingPage = () => {
             gap: 10,
             fontSize: '1.08rem',
             marginBottom: 10,
-            color:
-              jobStatus?.status === 'cutting' ||
-              jobStatus?.status === 'completed'
-                ? green
-                : jobStatus?.status === 'downloaded'
-                ? blue
-                : gray,
+            color: getStepColor('uploading'),
             fontWeight: 600,
           }}>
             <span style={{ display: 'inline-flex', alignItems: 'center' }}>
-              <CheckCircle2 style={{ width: 20, height: 20 }} />
+              {getStepIcon('uploading')}
+            </span>
+            Uploading video
+          </div>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            fontSize: '1.08rem',
+            marginBottom: 10,
+            color: getStepColor('analyzing'),
+            fontWeight: 600,
+          }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+              {getStepIcon('analyzing')}
             </span>
             Analyzing transcript
           </div>
@@ -178,16 +220,11 @@ const ProcessingPage = () => {
             gap: 10,
             fontSize: '1.08rem',
             marginBottom: 10,
-            color:
-              jobStatus?.status === 'completed'
-                ? green
-                : jobStatus?.status === 'cutting'
-                ? blue
-                : gray,
+            color: getStepColor('creating'),
             fontWeight: 600,
           }}>
             <span style={{ display: 'inline-flex', alignItems: 'center' }}>
-              <CheckCircle2 style={{ width: 20, height: 20 }} />
+              {getStepIcon('creating')}
             </span>
             Creating shorts
           </div>

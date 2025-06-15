@@ -7,7 +7,6 @@ import DeleteConfirmModal from '../components/shorts/DeleteConfirmModal';
 import { supabase } from '../supabase/client';
 import { toast } from 'react-toastify';
 import MyShortsList from '../components/shorts/MyShortsList';
-import { ToastContainer } from 'react-toastify';
 
 const MyShortsPage = () => {
   const { isDarkMode } = useTheme();
@@ -44,8 +43,28 @@ const MyShortsPage = () => {
           return;
         }
 
-        console.log('Fetched shorts from Supabase:', data);
-        setShorts(data || []);
+        // Group shorts by original_video_path
+        const groupedShorts = data.reduce((acc, short) => {
+          const key = short.original_video_path;
+          if (!acc[key]) {
+            acc[key] = {
+              id: short.id,
+              original_video_path: key,
+              created_at: short.created_at,
+              shorts: []
+            };
+          }
+          acc[key].shorts.push(short);
+          return acc;
+        }, {});
+
+        // Convert grouped object to array and sort by creation date
+        const sortedShorts = Object.values(groupedShorts).sort((a, b) => 
+          new Date(b.created_at) - new Date(a.created_at)
+        );
+
+        console.log('Grouped shorts:', sortedShorts);
+        setShorts(sortedShorts);
       } catch (err) {
         console.error('Error in fetchShorts:', err);
         toast.error('Failed to load your shorts');
@@ -72,26 +91,39 @@ const MyShortsPage = () => {
     };
   }, [showOptions]);
 
-  const handleDelete = async (jobId) => {
+  const handleDelete = async (groupIdToDelete) => {
     try {
-      const { error } = await supabase
-        .from('shorts')
-        .delete()
-        .eq('job_id', jobId)
-        .eq('user_id', user.id);
+      // Find the original_video_path for the group being deleted
+      const groupToDelete = shorts.find(group => group.id === groupIdToDelete);
 
-      if (error) {
-        console.error('Error deleting short:', error);
-        toast.error('Failed to delete short');
+      if (!groupToDelete) {
+        toast.error('Group not found for deletion.');
+        setShowDeleteConfirm(null);
         return;
       }
 
-      setShorts(prev => prev.filter(s => s.job_id !== jobId));
+      const originalVideoPath = groupToDelete.original_video_path;
+
+      // Delete all shorts with the same original_video_path for this user
+      const { error } = await supabase
+        .from('shorts')
+        .delete()
+        .eq('original_video_path', originalVideoPath)
+        .eq('user_id', user.id);
+
+      if (error) {
+        console.error('Error deleting shorts:', error);
+        toast.error('Failed to delete shorts');
+        return;
+      }
+
+      // Update the state to remove the entire group
+      setShorts(prev => prev.filter(group => group.id !== groupIdToDelete));
       setShowDeleteConfirm(null);
-      toast.success('Short deleted successfully');
+      toast.success('Shorts deleted successfully');
     } catch (err) {
       console.error('Error in handleDelete:', err);
-      toast.error('Failed to delete short');
+      toast.error('Failed to delete shorts');
     }
   };
 
@@ -111,7 +143,6 @@ const MyShortsPage = () => {
     }
     // Wait a bit after last download to ensure all are triggered
     setTimeout(() => {
-      toast.dismiss();
       toast.success('All shorts downloaded!');
     }, 5000);
   };
@@ -123,7 +154,6 @@ const MyShortsPage = () => {
       <Sidebar isMobile={isMobile} isDarkMode={isDarkMode} activePage="my-shorts" />
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
         <Navbar userEmail={user?.email} />
-        <ToastContainer position="top-right" autoClose={2500} hideProgressBar={false} newestOnTop closeOnClick pauseOnFocusLoss draggable pauseOnHover />
         <div style={{ flex: 1, padding: isMobile ? '16px' : '24px' }}>
           <div style={{ 
             maxWidth: 1100, 

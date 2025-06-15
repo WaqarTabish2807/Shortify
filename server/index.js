@@ -8,6 +8,7 @@ const healthRoutes = require('./routes/health');
 const audioRoutes = require('./routes/audio');
 const transcribeRoutes = require('./routes/transcribe');
 const analyzeRoutes = require('./routes/analyze');
+const paymentRoutes = require('./routes/payment');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -20,6 +21,7 @@ app.use('/api', healthRoutes);
 app.use('/api', audioRoutes);
 app.use('/api', transcribeRoutes);
 app.use('/api', analyzeRoutes);
+app.use('/api/payment', paymentRoutes);
 
 // Serve the temp directory statically at /shorts
 app.use('/shorts', express.static(path.join(__dirname, 'temp')));

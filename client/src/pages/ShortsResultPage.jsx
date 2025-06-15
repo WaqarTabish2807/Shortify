@@ -1,81 +1,83 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
+import { supabase } from '../supabase/client';
+import { ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 import Navbar from '../components/Navbar';
 import Sidebar from '../components/Sidebar';
-import { useTheme } from '../context/ThemeContext';
 import ShortsResultHeader from '../components/shorts/ShortsResultHeader';
 import UpgradeBanner from '../components/shorts/UpgradeBanner';
 import ErrorMessage from '../components/shorts/ErrorMessage';
 import ShortsList from '../components/shorts/ShortsList';
-import { supabase } from '../supabase/client';
-import { toast } from 'react-toastify';
-import { ToastContainer } from 'react-toastify';
-import 'react-toastify/dist/ReactToastify.css';
 
 const ShortsResultPage = () => {
-  const location = useLocation();
-  const navigate = useNavigate();
-  const { jobId, videoId } = location.state || {};
-  const [jobStatus, setJobStatus] = useState(null);
-  const [error, setError] = useState(null);
   const { user } = useAuth();
   const { isDarkMode } = useTheme();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [jobStatus, setJobStatus] = useState(null);
+  const [error, setError] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [pollingInterval, setPollingInterval] = useState(null);
 
   // On mount, if no state is present, redirect to dashboard
   useEffect(() => {
-    if (!jobId || !videoId) {
+    if (!location.state?.jobId) {
       navigate('/dashboard', { replace: true });
       return;
     }
-  }, [jobId, videoId, navigate]);
+  }, [location.state?.jobId, navigate]);
 
   useEffect(() => {
-    if (!jobId) {
-      return;
-    }
-    let interval;
-    const fetchStatus = async () => {
+    const fetchJobStatus = async () => {
       try {
-        const res = await fetch(`http://localhost:5000/api/job-status/${jobId}`);
-        const data = await res.json();
-        if (data.success) {
-          setJobStatus(data);
-          // Stop polling if completed or error
-          if (data.status === 'completed' || data.status === 'error') {
-            clearInterval(interval);
-          }
-        } else {
-          // Handle cases where the API returns success: false but no specific error message
-          setError(data.error || 'Could not fetch shorts status.');
-          clearInterval(interval);
+        const response = await fetch(`http://localhost:5000/api/job-status/${location.state?.jobId}`);
+        const responseData = await response.json();
+        
+        if (!response.ok) {
+          throw new Error(responseData.error || 'Failed to fetch job status');
+        }
+
+        setJobStatus(responseData);
+        
+        if (responseData.status === 'completed' || responseData.status === 'error') {
+          clearInterval(pollingInterval);
+          setIsLoading(false);
         }
       } catch (err) {
-        console.error('Error fetching job status:', err);
-        setError(`Could not fetch shorts status: ${err.message || 'Unknown error'}`);
-        clearInterval(interval);
+        setError(err.message);
+        clearInterval(pollingInterval);
+        setIsLoading(false);
       }
     };
 
-    fetchStatus();
-    // Poll status every 3 seconds
-    interval = setInterval(fetchStatus, 3000);
+    if (location.state?.jobId) {
+      fetchJobStatus();
+      const interval = setInterval(fetchJobStatus, 2000);
+      setPollingInterval(interval);
+    }
 
-    return () => clearInterval(interval);
-  }, [jobId]); // Depend on jobId
+    return () => {
+      if (pollingInterval) {
+        clearInterval(pollingInterval);
+      }
+    };
+  }, [location.state?.jobId]);
 
   useEffect(() => {
     // This effect now specifically handles saving once the job is completed.
     // It will first check if the shorts are already saved before attempting to insert.
-    if (user && jobStatus?.status === 'completed' && jobStatus.shorts && jobStatus.shorts.length > 0 && jobId && videoId) {
+    if (user && jobStatus?.status === 'completed' && jobStatus.shorts && jobStatus.shorts.length > 0 && location.state.jobId) {
       const saveShortsIfNotExists = async () => {
-        console.log(`Checking if shorts for job ID ${jobId} and user ${user.id} already exist...`);
+        console.log(`Checking if shorts for job ID ${location.state.jobId} and user ${user.id} already exist...`);
         try {
           // Check if shorts for this job and user already exist
           const { data: existingShorts, error: fetchError } = await supabase
             .from('shorts')
             .select('id')
-            .eq('job_id', jobId)
+            .eq('job_id', location.state.jobId)
             .eq('user_id', user.id);
 
           if (fetchError) {
@@ -83,7 +85,7 @@ const ShortsResultPage = () => {
             // If checking fails, we still attempt to save to be safe, error handling inside insert logic
              attemptInsertShorts();
           } else if (existingShorts && existingShorts.length > 0) {
-            console.log(`Shorts for job ID ${jobId} and user ${user.id} already exist. Skipping insert.`);
+            console.log(`Shorts for job ID ${location.state.jobId} and user ${user.id} already exist. Skipping insert.`);
           } else {
             console.log('No existing shorts found. Proceeding with insert.');
             // If no existing shorts found, proceed with insert
@@ -100,12 +102,12 @@ const ShortsResultPage = () => {
           const { data, error: insertError } = await supabase
             .from('shorts')
             .insert({
-              job_id: jobId,
-              video_id: videoId,
+              job_id: location.state.jobId,
+              video_id: jobStatus.videoId,
               shorts: jobStatus.shorts,
               user_id: user.id,
               created_at: new Date().toISOString(),
-              video_name: `Video ${jobId}` // You might want to get the actual video name from YouTube API
+              video_name: `Video ${location.state.jobId}` // You might want to get the actual video name from YouTube API
             });
 
           if (insertError) {
@@ -120,7 +122,27 @@ const ShortsResultPage = () => {
 
       saveShortsIfNotExists();
     }
-  }, [user, jobStatus, jobId, videoId]); // Depend on relevant state and props
+  }, [user, jobStatus, location.state.jobId]); // Depend on relevant state and props
+
+  useEffect(() => {
+    const fetchShorts = async () => {
+      try {
+        const { data: shorts, error } = await supabase
+          .from('shorts')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false });
+
+        if (error) throw error;
+      } catch (error) {
+        console.error('Error fetching shorts:', error);
+      }
+    };
+
+    if (user) {
+      fetchShorts();
+    }
+  }, [user]);
 
   // Determine if user is free tier and show upgrade message
   const isFreeTier = user && user.tier !== 'paid';

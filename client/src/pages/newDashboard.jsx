@@ -14,24 +14,18 @@ import LayoutSelector from '../components/newDashboard/LayoutSelector';
 import AdvancedOptions from '../components/newDashboard/AdvancedOptions';
 import TemplateSelector from '../components/newDashboard/TemplateSelector';
 import GenerateButton from '../components/newDashboard/GenerateButton';
-
-function validateYoutubeUrl(url) {
-  if (!url) return false;
-  if (url.includes('playlist?list=') || url.includes('list=')) return 'playlist';
-  const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
-  const match = url.match(regExp);
-  return (match && match[2].length === 11) ? true : false;
-}
+import { FaSpinner } from 'react-icons/fa';
 
 const NewDashboard = () => {
   const { isDarkMode } = useTheme();
   const { user } = useAuth();
   const [screenWidth, setScreenWidth] = useState(window.innerWidth);
   const [videoUrl, setVideoUrl] = useState("");
-  const [languageCode, setLanguageCode] = useState(null);
+  const [videoFile, setVideoFile] = useState(null);
+  const [languageCode, setLanguageCode] = useState("en-US");
   const [timeframe, setTimeframe] = useState([0, 600]);
   const [clipLength, setClipLength] = useState('30s-60s');
-  const [selectedTemplate, setSelectedTemplate] = useState('Hormozi');
+  const [selectedTemplate, setSelectedTemplate] = useState('default');
   const [advanced, setAdvanced] = useState({
     memeHook: false,
     gameVideo: false,
@@ -41,24 +35,13 @@ const NewDashboard = () => {
   });
   const [layout, setLayout] = useState('auto');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isButtonDisabled, setIsButtonDisabled] = useState(false);
   const navigate = useNavigate();
   const inputRef = React.useRef(null);
   const [languageLoading, setLanguageLoading] = useState(false);
   const [videoDuration, setVideoDuration] = useState(null);
   const [userTier] = useState('free');
   const [jobId, setJobId] = useState(null);
-
-  // Helper for YouTube embed
-  const getYoutubeId = useCallback((url) => {
-    if (!url || url.includes('playlist?list=') || url.includes('list=')) return null;
-    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
-    const match = url.match(regExp);
-    return (match && match[2].length === 11) ? match[2] : null;
-  }, []);
-
-  const youtubeId = useMemo(() => getYoutubeId(videoUrl), [videoUrl, getYoutubeId]);
-  const isPlaylist = useMemo(() => videoUrl && (videoUrl.includes('playlist?list=') || videoUrl.includes('list=')), [videoUrl]);
-  const showOptions = useMemo(() => !!youtubeId && !isPlaylist, [youtubeId, isPlaylist]);
 
   // After submitting the video for processing, poll the /api/job-status/:jobId endpoint to get the video duration.
   const pollJobStatus = useCallback(async (jobId) => {
@@ -79,44 +62,65 @@ const NewDashboard = () => {
 
   // Update handleSubmit to store jobId and poll for duration
   const handleSubmit = useCallback(async (e) => {
-    if (e) e.preventDefault();
+    e.preventDefault();
+    if (!videoFile) {
+      toast.error('Please upload a video file first.');
+      return;
+    }
+
     setIsProcessing(true);
+    setIsButtonDisabled(true);
     try {
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
       if (sessionError) throw sessionError;
       if (!session?.access_token) {
         throw new Error('No active session found');
       }
+
+      const formData = new FormData();
+      formData.append('video', videoFile);
+      formData.append('clipLength', clipLength);
+      formData.append('layout', layout);
+      formData.append('template', selectedTemplate);
+      formData.append('languageCode', languageCode);
+
+      // Navigate to processing page immediately
+      navigate('/processing', { state: { pendingUpload: true } });
+
       const response = await fetch('http://localhost:5000/api/process-video', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
           'Authorization': `Bearer ${session.access_token}`
         },
-        body: JSON.stringify({ videoId: youtubeId, clipLength, layout, template: selectedTemplate })
+        body: formData
       });
+
       const data = await response.json();
       if (!response.ok) {
         if (response.status === 403) {
           const errorMsg = 'You are out of credits. Please upgrade to Pro to continue.';
           toast.error(errorMsg, { position: 'top-right' });
+          navigate('/dashboard');
         } else {
           throw new Error(data.error || 'Failed to process video');
         }
         return;
       }
-      // Store jobId and poll for duration
+
       if (data && data.jobId) {
         setJobId(data.jobId);
         pollJobStatus(data.jobId);
-        navigate('/processing', { state: { jobId: data.jobId, videoId: youtubeId } });
+        // Update the processing page with the jobId
+        navigate('/processing', { state: { jobId: data.jobId } });
       }
     } catch (err) {
       toast.error(err.message);
+      navigate('/dashboard');
     } finally {
       setIsProcessing(false);
+      setIsButtonDisabled(false);
     }
-  }, [navigate, youtubeId, pollJobStatus, clipLength, layout, selectedTemplate]);
+  }, [videoFile, clipLength, layout, selectedTemplate, languageCode, navigate, pollJobStatus]);
 
   // When jobId changes, poll for duration
   useEffect(() => {
@@ -156,30 +160,31 @@ const NewDashboard = () => {
     }
   }, []);
 
-  // Handle URL changes
-  const handleUrlChange = useCallback(async (e) => {
-    const url = e.target.value;
-    setVideoUrl(url);
-    if (!url) return;
-    const valid = validateYoutubeUrl(url);
-    if (valid === 'playlist') {
-      toast.error('Playlist URLs are not supported. Please enter a single YouTube video URL.');
+  // Handle file change
+  const handleFileChange = useCallback(async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith('video/')) {
+      toast.error('Please upload a valid video file.');
       return;
     }
-    if (!valid) {
-      toast.error('Please enter a valid YouTube video URL.');
+
+    // Validate file size (100MB limit)
+    if (file.size > 100 * 1024 * 1024) {
+      toast.error('Video file size must be less than 100MB.');
       return;
     }
-    const vid = getYoutubeId(url);
-    if (vid) {
-      setLanguageLoading(true);
-      const detectedLang = await autoDetectLanguage(vid);
-      if (detectedLang) {
-        setLanguageCode(detectedLang);
-      }
-      setLanguageLoading(false);
-    }
-  }, [getYoutubeId, autoDetectLanguage]);
+
+    setVideoFile(file);
+    setVideoUrl(URL.createObjectURL(file));
+    setLanguageLoading(true);
+    
+    // Auto-detect language based on file name or default to English
+    setLanguageCode('en-US');
+    setLanguageLoading(false);
+  }, []);
 
   // Handle window resize
   useEffect(() => {
@@ -200,13 +205,13 @@ const NewDashboard = () => {
         e.preventDefault();
         inputRef.current && inputRef.current.focus();
       }
-      if (e.key === 'Enter' && document.activeElement === inputRef.current && showOptions) {
+      if (e.key === 'Enter' && document.activeElement === inputRef.current) {
         handleSubmit(e);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [showOptions, handleSubmit]);
+  }, [handleSubmit]);
 
   const isMobile = screenWidth < 768;
 
@@ -236,10 +241,10 @@ const NewDashboard = () => {
           <div
             style={{
               display: 'flex',
-              flexDirection: !showOptions ? 'column' : (isMobile ? 'column' : 'row'),
-              alignItems: !showOptions ? 'center' : 'stretch',
+              flexDirection: isMobile ? 'column' : 'row',
+              alignItems: 'stretch',
               justifyContent: 'center',
-              gap: !showOptions ? 0 : (isMobile ? 24 : 40),
+              gap: isMobile ? 24 : 40,
               background: isDarkMode
                 ? '#23243a'
                 : '#fff',
@@ -247,124 +252,171 @@ const NewDashboard = () => {
               boxShadow: isDarkMode
                 ? '0 4px 32px #23272f88, 0 1.5px 8px #23272f33'
                 : '0 4px 32px #e0e7ef55, 0 1.5px 8px #e0e7ef22',
-              padding: isMobile ? 18 : (!showOptions ? 40 : 36),
+              padding: isMobile ? 18 : 36,
               maxWidth: 900,
               width: '100%',
-              minWidth: isMobile ? '98vw' : 340,
-              margin: isMobile ? '0 1vw' : '32px 0',
-              border: isDarkMode ? '1.5px solid #23272f' : '1.5px solid #e0e7ef',
-              overflow: 'visible',
-              backdropFilter: isDarkMode ? 'blur(2.5px)' : undefined,
-              position: 'relative',
             }}
           >
-            {/* LEFT COLUMN (or full card if !showOptions) */}
+            {/* Left Column */}
             <div
               style={{
                 flex: 1,
-                minWidth: 260,
-                maxWidth: !showOptions ? 420 : 400,
                 display: 'flex',
                 flexDirection: 'column',
-                gap: 0,
-                alignItems: !showOptions ? 'center' : 'stretch',
-                justifyContent: 'space-between',
-                margin: !showOptions ? '0 auto' : 0,
-                width: !showOptions ? '100%' : undefined,
-                height: '100%',
+                alignItems: 'stretch',
+                gap: 24,
+                maxWidth: 400,
+                width: '100%',
               }}
             >
-              <div>
-                <div style={{ fontWeight: 800, fontSize: 22, marginBottom: 8, letterSpacing: 0.1, textAlign: !showOptions ? 'center' : 'left', color: isDarkMode ? '#f3f4f6' : '#1e293b', textShadow: isDarkMode ? '0 1px 8px #0008' : undefined }}>
-                  Create YouTube Shorts
-                </div>
-                <div style={{ color: isDarkMode ? '#c7c7d9' : '#555', fontSize: 14, marginBottom: 18, textAlign: !showOptions ? 'center' : 'left' }}>
-                  Transform your YouTube videos into engaging shorts
-                </div>
-                {/* Video URL */}
-                <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4, alignSelf: 'center', color: isDarkMode ? '#e0e7ef' : '#222', textAlign: 'center' }}>YouTube Video URL</div>
+              <div style={{ fontWeight: 800, fontSize: 22, marginBottom: 8, letterSpacing: 0.1, textAlign: 'left', color: isDarkMode ? '#f3f4f6' : '#1e293b', textShadow: isDarkMode ? '0 1px 8px #0008' : undefined }}>
+                Create Shorts
+              </div>
+              <div style={{ color: isDarkMode ? '#c7c7d9' : '#555', fontSize: 14, marginBottom: 18, textAlign: 'left' }}>
+                Transform your videos into engaging shorts
+              </div>
+
+              {/* Video Upload */}
+              <div style={{ width: '100%' }}>
                 <input
+                  type="file"
+                  accept="video/*"
+                  onChange={handleFileChange}
+                  style={{ display: 'none' }}
+                  id="video-upload"
                   ref={inputRef}
-                  type="text"
-                  placeholder="Paste your YouTube video URL!"
-                  value={videoUrl}
-                  onChange={handleUrlChange}
+                />
+                <label
+                  htmlFor="video-upload"
                   style={{
-                    width: !showOptions ? 320 : '100%',
-                    maxWidth: 420,
-                    border: `1.5px solid ${isDarkMode ? '#333' : '#e0e0e0'}`,
+                    width: '100%',
+                    border: `1.5px dashed ${isDarkMode ? '#333' : '#e0e0e0'}`,
                     borderRadius: 10,
-                    padding: '12px 14px',
+                    padding: '20px',
                     fontSize: 14,
                     outline: 'none',
                     background: isDarkMode ? '#18192a' : '#fafbfc',
                     color: isDarkMode ? '#f3f4f6' : '#000',
-                    margin: '2 auto 18px auto',
+                    marginBottom: 10,
                     boxSizing: 'border-box',
-                    boxShadow: isDarkMode ? '0 1px 4px #23272f22' : '0 1px 4px #e0e7ef22',
                     textAlign: 'center',
-                    display: 'block',
-                    '::placeholder': { color: isDarkMode ? '#b0b0c3' : '#888' },
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: '12px',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
                   }}
-                />
-                {showOptions && (
-                  <>
-                    <LanguageSelector
-                      languageCode={languageCode}
-                      setLanguageCode={setLanguageCode}
-                      languageLoading={languageLoading}
-                      isDarkMode={isDarkMode}
-                    />
-                    <VideoPreview
-                      youtubeId={youtubeId}
-                      isDarkMode={isDarkMode}
-                      isMobile={isMobile}
-                    />
-                    <ProcessingTimeframe
-                      timeframe={timeframe}
-                      setTimeframe={setTimeframe}
-                      videoDuration={videoDuration}
-                      allowedMax={allowedMax}
-                      isDarkMode={isDarkMode}
-                    />
-                    <ClipLengthSelector
-                      clipLength={clipLength}
-                      setClipLength={setClipLength}
-                      isDarkMode={isDarkMode}
-                    />
-                    <LayoutSelector
-                      layout={layout}
-                      setLayout={setLayout}
-                      userTier={userTier}
-                      isDarkMode={isDarkMode}
-                    />
-                    <AdvancedOptions
-                      advanced={advanced}
-                      setAdvanced={setAdvanced}
-                      isDarkMode={isDarkMode}
-                    />
-                  </>
-                )}
+                >
+                  {videoFile ? (
+                    <>
+                      <div style={{ fontWeight: 600, color: isDarkMode ? '#e0e7ef' : '#222' }}>
+                        {videoFile.name}
+                      </div>
+                      <div style={{ fontSize: 12, color: isDarkMode ? '#888' : '#666' }}>
+                        {(videoFile.size / (1024 * 1024)).toFixed(1)}MB
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div style={{ fontSize: 16, color: isDarkMode ? '#e0e7ef' : '#222' }}>
+                        Click to upload video
+                      </div>
+                      <div style={{ fontSize: 12, color: isDarkMode ? '#888' : '#666' }}>
+                        MP4, MOV, or AVI (max 100MB)
+                      </div>
+                    </>
+                  )}
+                </label>
               </div>
-            </div>
-            {/* RIGHT COLUMN */}
-            {showOptions && (
-              <div style={{ width: '100%', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', alignItems: 'center' }}>
-                <TemplateSelector
-                  selectedTemplate={selectedTemplate}
-                  setSelectedTemplate={setSelectedTemplate}
-                  isDarkMode={isDarkMode}
-                />
-              </div>
-            )}
-            {/* Generate Button */}
-            {showOptions && (
-              <GenerateButton
-                isProcessing={isProcessing}
-                handleSubmit={handleSubmit}
+
+              {/* Video Preview */}
+              {videoFile && (
+                <VideoPreview videoUrl={videoUrl} isDarkMode={isDarkMode} />
+              )}
+
+              {/* Language Selector */}
+              <LanguageSelector
+                languageCode={languageCode}
+                setLanguageCode={setLanguageCode}
+                languageLoading={languageLoading}
                 isDarkMode={isDarkMode}
               />
-            )}
+
+              {/* Process Button */}
+              <button
+                onClick={handleSubmit}
+                disabled={!videoFile || isProcessing}
+                style={{
+                  width: '100%',
+                  padding: '12px',
+                  borderRadius: 6,
+                  border: 'none',
+                  background: !videoFile || isProcessing
+                    ? isDarkMode ? '#333' : '#e0e0e0'
+                    : isDarkMode ? '#3b82f6' : '#2563eb',
+                  color: '#fff',
+                  fontSize: 14,
+                  fontWeight: 500,
+                  cursor: !videoFile || isProcessing ? 'not-allowed' : 'pointer',
+                  opacity: !videoFile || isProcessing ? 0.7 : 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px'
+                }}
+              >
+                {isProcessing ? 'Processing...' : 'Process Video'}
+              </button>
+            </div>
+
+            {/* Right Column */}
+            <div
+              style={{
+                flex: 1,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 24,
+                maxWidth: 400,
+                width: '100%',
+              }}
+            >
+              {/* Processing Timeframe */}
+              <ProcessingTimeframe
+                timeframe={timeframe}
+                setTimeframe={setTimeframe}
+                allowedMax={allowedMax}
+                isDarkMode={isDarkMode}
+              />
+
+              {/* Clip Length Selector */}
+              <ClipLengthSelector
+                clipLength={clipLength}
+                setClipLength={setClipLength}
+                isDarkMode={isDarkMode}
+              />
+
+              {/* Layout Selector */}
+              <LayoutSelector
+                layout={layout}
+                setLayout={setLayout}
+                isDarkMode={isDarkMode}
+              />
+
+              {/* Template Selector */}
+              <TemplateSelector
+                selectedTemplate={selectedTemplate}
+                setSelectedTemplate={setSelectedTemplate}
+                isDarkMode={isDarkMode}
+              />
+
+              {/* Advanced Options */}
+              <AdvancedOptions
+                advanced={advanced}
+                setAdvanced={setAdvanced}
+                isDarkMode={isDarkMode}
+              />
+            </div>
           </div>
         </div>
       </div>

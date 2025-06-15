@@ -1,7 +1,7 @@
 import React from 'react';
 
-const VideoPreview = ({ youtubeId, isDarkMode, isMobile }) => {
-  if (!youtubeId) return null;
+const VideoPreview = ({ videoUrl, isDarkMode, isMobile }) => {
+  if (!videoUrl) return null;
   
   return (
     <div style={{ 
@@ -14,22 +14,14 @@ const VideoPreview = ({ youtubeId, isDarkMode, isMobile }) => {
       minHeight: 100, 
       maxHeight: 180 
     }}>
-      <iframe
-        width="100%"
-        height={isMobile ? 120 : 160}
-        src={`https://www.youtube.com/embed/${youtubeId}`}
-        title="YouTube video preview"
-        frameBorder="0"
-        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-        allowFullScreen
+      <video
+        src={videoUrl}
+        controls
         style={{ 
-          border: 'none', 
           width: '100%', 
-          borderRadius: 12, 
-          background: '#000', 
           height: '100%', 
-          minHeight: 100, 
-          maxHeight: 180 
+          objectFit: 'cover',
+          background: '#000'
         }}
       />
     </div>
