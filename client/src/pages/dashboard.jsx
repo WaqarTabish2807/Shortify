@@ -65,8 +65,7 @@ const Dashboard = () => {
       const formData = new FormData();
       formData.append('video', videoFile);
 
-      const apiUrl = process.env.REACT_APP_API_URL?.replace(/\/$/, '');
-      const response = await fetch(`${apiUrl}/api/process-video`, {
+      const response = await fetch(`${process.env.REACT_APP_API_URL}/api/process-video`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${session.access_token}`
