@@ -68,8 +68,11 @@ const Dashboard = () => {
       const response = await fetch(`${process.env.REACT_APP_API_URL}/api/process-video`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${session.access_token}`
+          'Authorization': `Bearer ${session.access_token}`,
+          'Accept': 'application/json'
         },
+        credentials: 'include',
+        mode: 'cors',
         body: formData
       });
 
@@ -88,6 +91,7 @@ const Dashboard = () => {
         navigate('/processing', { state: { jobId: data.jobId } });
       }
     } catch (err) {
+      console.error('Error:', err);
       toast.error(err.message);
     } finally {
       setIsProcessing(false);
